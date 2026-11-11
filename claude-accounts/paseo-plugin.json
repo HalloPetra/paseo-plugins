@@ -1,0 +1,9 @@
+{
+  "id": "claude-accounts",
+  "name": "Claude accounts",
+  "description": "Connect several Claude Code subscriptions and switch to the next one when a usage limit is reached",
+  "media": [],
+  "requirements": {
+    "paseo": ">=0.16.0-beta.1"
+  }
+}
