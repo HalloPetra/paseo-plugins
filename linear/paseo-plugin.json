@@ -1,0 +1,9 @@
+{
+  "id": "linear",
+  "name": "Linear",
+  "description": "Pick Linear issues from the composer and use them as the prompt",
+  "media": [],
+  "requirements": {
+    "paseo": ">=0.16.0-beta.1"
+  }
+}
