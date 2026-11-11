@@ -273,19 +273,34 @@ export function Button({
         (disabled || busy) && { opacity: 0.5 },
       ]}
     >
+      {/* Spinner overlays the hidden label so the button keeps its size while busy. */}
+      <Text style={[textStyle, busy && { opacity: 0 }]}>{label}</Text>
       {busy ? (
-        <ActivityIndicator
-          size="small"
-          color={
-            tone === "primary"
-              ? theme.colors.accentForeground
-              : tone === "danger"
-                ? DESTRUCTIVE_FOREGROUND
-                : theme.colors.foregroundMuted
-          }
-        />
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <ActivityIndicator
+            size="small"
+            style={{ transform: [{ scale: 0.7 }] }}
+            color={
+              tone === "primary"
+                ? theme.colors.accentForeground
+                : tone === "danger"
+                  ? DESTRUCTIVE_FOREGROUND
+                  : theme.colors.foregroundMuted
+            }
+          />
+        </View>
       ) : null}
-      <Text style={textStyle}>{label}</Text>
     </Pressable>
   );
 }
