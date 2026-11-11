@@ -1,27 +1,24 @@
 import type { PluginTheme } from "@getpaseo/plugin";
-import { type AgentRef, type PluginPanelProps, useAgent, useAgents, usePaseo } from "@getpaseo/plugin/client";
+import {
+  type AgentRef,
+  type PluginComposer,
+  useAgent,
+  useAgents,
+  useComposers,
+} from "@getpaseo/plugin/client";
 import { Icon, useToast } from "@getpaseo/plugin/client/ui";
 import { useMutation } from "@tanstack/react-query";
-import { createContext, useContext, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Dropdown } from "./dropdown";
 import { Spinner } from "./spinner";
 
 type Colors = PluginTheme["colors"];
 
-/** The panel's navigation, so a send can jump to the agent it messaged. */
-export const PanelNavigationContext = createContext<PluginPanelProps<unknown>["navigation"]>(undefined);
-
-/** A text document sent alongside the message, shown as an attachment in the agent's timeline. */
-export interface MessageDocument {
-  title: string;
-  text: string;
-  resource: { resourceType: string; id: string; identifier: string; title: string; url: string };
-}
-
-export interface AgentMessage {
-  text: string;
-  documents?: MessageDocument[];
+/** Appends `prompt` after whatever the user already typed. */
+export function appendPrompt(composer: PluginComposer, prompt: string) {
+  const existing = composer.prompt.trim();
+  composer.setPrompt(existing ? `${existing}\n\n${prompt}` : prompt);
 }
 
 function AgentLabel({ agentRef, colors }: { agentRef: AgentRef; colors: Colors }) {
@@ -41,18 +38,19 @@ function AgentLabel({ agentRef, colors }: { agentRef: AgentRef; colors: Colors }
 }
 
 /**
- * A full-width button that sends a message to an agent: the most recently active top-level
- * agent in the workspace by default, or one picked from the chevron. A running turn is
- * steered rather than interrupted. Afterwards the agent is opened.
+ * A full-width button that prepares a prompt in an agent's composer: the most recently
+ * active top-level agent in the workspace by default, or one picked from the chevron.
+ * `fill` writes the prompt (and any attachments); the composer is focused afterwards.
+ * Nothing is sent.
  */
-export function AgentSendButton({
+export function AgentPromptButton({
   workspaceId,
   label,
   pendingLabel,
   icon,
   tone,
   colors,
-  message,
+  fill,
 }: {
   workspaceId: string;
   label: string;
@@ -61,8 +59,7 @@ export function AgentSendButton({
   /** Background of the enabled button. */
   tone: string;
   colors: Colors;
-  /** Builds the message at press time (e.g. fetching logs). */
-  message(): Promise<AgentMessage> | AgentMessage;
+  fill(composer: PluginComposer): Promise<void> | void;
 }) {
   const agents = useAgents({
     where: (a) => a.workspaceId === workspaceId && a.status !== "closed" && a.parentAgentId === null,
@@ -71,32 +68,19 @@ export function AgentSendButton({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const target = agents.find((a) => a.id === selectedId) ?? agents[0];
   const targetTitle = useAgent(target?.id ?? "", (a) => a.title) || "Untitled agent";
-  const paseo = usePaseo();
-  const navigation = useContext(PanelNavigationContext);
+  const composers = useComposers({ agentId: target?.id ?? "" });
   const [menuOpen, setMenuOpen] = useState(false);
   const anchorRef = useRef<View>(null);
   const toast = useToast();
 
   const mutation = useMutation({
     mutationFn: async () => {
-      if (!target) throw new Error("No agent to send to.");
-      const { text, documents = [] } = await message();
-      await paseo.agents.ref(target).send(text, {
-        activeTurnBehavior: "steer",
-        attachments: documents.map((doc) => ({
-          type: "text" as const,
-          mimeType: "text/plain" as const,
-          title: doc.title,
-          text: doc.text,
-          externalResource: { provider: "github", providerLabel: "GitHub", ...doc.resource },
-        })),
-      });
-      return target.id;
+      const composer = composers[0];
+      if (!composer) throw new Error("Could not reach that agent's composer.");
+      await fill(composer);
+      await composer.focus();
     },
-    onSuccess: (agentId) => {
-      toast.show(`Sent to ${targetTitle}`, { variant: "success" });
-      navigation?.openAgent({ agentId });
-    },
+    onSuccess: () => toast.show("Prompt ready. Review it and send.", { variant: "success" }),
     onError: (error) => toast.error(error instanceof Error ? error.message : String(error)),
   });
 

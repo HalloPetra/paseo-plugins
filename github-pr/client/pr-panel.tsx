@@ -6,7 +6,6 @@ import { Pressable, Text, View } from "react-native";
 import { z } from "zod";
 import type { Check, PrComment, PullRequest } from "../shared/pr";
 import { sanitizeMarkdown } from "./markdown";
-import { PanelNavigationContext } from "./agent-prompt";
 import { FixChecksCard } from "./fix-checks";
 import { MergeBox } from "./merge-box";
 import { ResolveConflictsButton } from "./resolve-conflicts";
@@ -316,7 +315,7 @@ function PrView({ pr, directory, workspaceId, colors, styles }: { pr: PullReques
 
 const tabStateSchema = z.object({ collapsed: z.array(z.string()) });
 
-export function PrPanel({ theme, layout, workspaceId, tab, navigation }: PluginWorkspacePanelProps) {
+export function PrPanel({ theme, layout, workspaceId, tab }: PluginWorkspacePanelProps) {
   const colors = theme.colors;
   const styles = useMemo(() => makeStyles(colors, layout.compact), [colors, layout.compact]);
   const { directory, query } = usePr(workspaceId);
@@ -373,11 +372,9 @@ export function PrPanel({ theme, layout, workspaceId, tab, navigation }: PluginW
         </View>
       ) : (
         <ScrollView contentContainerStyle={styles.content}>
-          <PanelNavigationContext.Provider value={navigation}>
-            <SectionsContext.Provider value={sections}>
-              <PrView pr={pr} directory={directory} workspaceId={workspaceId} colors={colors} styles={styles} />
-            </SectionsContext.Provider>
-          </PanelNavigationContext.Provider>
+          <SectionsContext.Provider value={sections}>
+            <PrView pr={pr} directory={directory} workspaceId={workspaceId} colors={colors} styles={styles} />
+          </SectionsContext.Provider>
         </ScrollView>
       )}
     </View>

@@ -1,4 +1,4 @@
-Shows the GitHub pull request for the current workspace's branch in a panel beside your agents, and lets you merge it or hand failing checks and merge conflicts to an agent. Open it from the Explorer sidebar, the pull request button in the workspace header, or "Show pull request" in the Command Center.
+Shows the GitHub pull request for the current workspace's branch in a panel beside your agents, and lets you merge it or hand failing checks to an agent. Open it from the Explorer sidebar, the pull request button in the workspace header, or "Show pull request" in the Command Center.
 
 The panel shows the PR title, state, branch and diff size; whether it can be merged and the review decision; every check with its status, linked to its run; the description rendered as Markdown; and conversation comments, reviews, and inline review comments in chronological order. Sections and comments can be collapsed, and comments from common bots start collapsed. It refreshes every 30 seconds and on demand. The header button is tinted by the PR's overall status and shows its number.
 
@@ -6,9 +6,9 @@ The panel shows the PR title, state, branch and diff size; whether it can be mer
 
 The merge button defaults to a merge commit; its dropdown offers squash and rebase when the repository allows them. Merging asks for confirmation and is refused if the branch moved since the panel loaded. The branch is not deleted. The button is disabled for drafts, merge conflicts, branch protection blocks, and branches that must be updated first.
 
-## Handing work to an agent
+## Fixing failing checks
 
-When checks fail, "Fix failing checks" sends the most recently active agent in the workspace (or one you choose) a prompt to fix them, with a document attached that holds each failing check's annotations and failed-step log excerpt. When the PR has merge conflicts, "Resolve conflicts" sends a prompt to merge the latest base branch, resolve the conflicts, test, and push. Both send immediately, steer a running turn instead of interrupting it, and then open the agent. Logs are only available for GitHub Actions checks; other checks are listed with a link. Failing check logs can also be attached from the composer's "+" menu by entering a PR URL or owner/repo#123.
+When checks fail, "Fix failing checks" fills the composer of the most recently active agent in the workspace (or one you choose) with a prompt to fix them, and attaches a document with each failing check's annotations and failed-step log excerpt. Nothing is sent until you send it. Logs are only available for GitHub Actions checks; other checks are listed with a link. Failing check logs can also be attached from the composer's "+" menu by entering a PR URL or owner/repo#123.
 
 ## Setup
 
