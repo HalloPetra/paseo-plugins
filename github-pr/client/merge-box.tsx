@@ -3,7 +3,7 @@ import { useRpc } from "@getpaseo/plugin/client";
 import { Icon, useToast } from "@getpaseo/plugin/client/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
-import { Modal, Pressable, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { type MergeMethod, type PullRequest, mergePrRpc } from "../shared/pr";
 import { Dropdown } from "./dropdown";
 import { Spinner } from "./spinner";
@@ -48,19 +48,16 @@ export function MergeBox({ pr, directory, colors }: { pr: PullRequest; directory
   const [method, setMethod] = useState<MergeMethod>(allowed.includes("merge") ? "merge" : (allowed[0] ?? "merge"));
   const [menuOpen, setMenuOpen] = useState(false);
   const anchorRef = useRef<View>(null);
-  const [confirming, setConfirming] = useState(false);
   const merge = useRpc(mergePrRpc);
   const queryClient = useQueryClient();
   const toast = useToast();
   const mutation = useMutation({
     mutationFn: () => merge({ directory, number: pr.number, method, headRefOid: pr.headRefOid }),
     onSuccess: (result) => {
-      setConfirming(false);
       if (result.ok) toast.show(`Merged #${pr.number}`, { variant: "success" });
       else toast.error(result.message);
     },
     onError: (error) => {
-      setConfirming(false);
       toast.error(error instanceof Error ? error.message : String(error));
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["github-pr", directory] }),
@@ -83,7 +80,7 @@ export function MergeBox({ pr, directory, colors }: { pr: PullRequest; directory
           accessibilityLabel={current.action}
           accessibilityState={{ disabled }}
           disabled={disabled}
-          onPress={() => setConfirming(true)}
+          onPress={() => mutation.mutate()}
           style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 8, paddingHorizontal: 10, backgroundColor: bg }}
         >
           {mutation.isPending ? <Spinner size={14} color={fg} /> : <Icon name={current.icon} size={14} color={fg} />}
@@ -119,73 +116,6 @@ export function MergeBox({ pr, directory, colors }: { pr: PullRequest; directory
       {!blocker && warn && (
         <Text style={{ color: colors.statusWarning, fontSize: 12 }}>Some checks are not passing.</Text>
       )}
-
-      <Modal
-        transparent
-        visible={confirming}
-        animationType="fade"
-        onRequestClose={() => !mutation.isPending && setConfirming(false)}
-      >
-        <Pressable
-          accessibilityLabel="Cancel"
-          onPress={() => !mutation.isPending && setConfirming(false)}
-          style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24, backgroundColor: "rgba(0,0,0,0.4)" }}
-        >
-          <View
-            accessibilityRole="alert"
-            // Keep taps inside the dialog from reaching the backdrop.
-            onStartShouldSetResponder={() => true}
-            style={{
-              width: "100%",
-              maxWidth: 380,
-              gap: 12,
-              padding: 18,
-              borderRadius: 10,
-              borderWidth: 1,
-              borderColor: colors.border,
-              backgroundColor: colors.surface1,
-              shadowColor: "#000",
-              shadowOpacity: 0.3,
-              shadowRadius: 16,
-              shadowOffset: { width: 0, height: 6 },
-              elevation: 10,
-            }}
-          >
-          <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: "600" }}>
-            {current.label} for #{pr.number} into {pr.baseRefName}?
-          </Text>
-          <Text style={{ color: colors.foregroundMuted, fontSize: 13 }} numberOfLines={3}>
-            {pr.title}
-          </Text>
-          {warn && (
-            <Text style={{ color: colors.statusWarning, fontSize: 13 }}>Some checks are not passing.</Text>
-          )}
-          <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8 }}>
-            <Pressable
-              accessibilityRole="button"
-              disabled={mutation.isPending}
-              onPress={() => setConfirming(false)}
-              style={{ paddingVertical: 8, paddingHorizontal: 12, borderRadius: 6, backgroundColor: colors.surface2 }}
-            >
-              <Text style={{ color: colors.foreground, fontSize: 13 }}>Cancel</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              disabled={mutation.isPending}
-              onPress={() => mutation.mutate()}
-              style={{ paddingVertical: 8, paddingHorizontal: 12, borderRadius: 6, backgroundColor: warn ? colors.statusWarning : colors.statusSuccess }}
-            >
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                {mutation.isPending && <Spinner size={13} color={colors.accentForeground} />}
-                <Text style={{ color: colors.accentForeground, fontSize: 13, fontWeight: "600" }}>
-                  {mutation.isPending ? "Merging…" : `Confirm ${current.action.toLowerCase()}`}
-                </Text>
-              </View>
-            </Pressable>
-          </View>
-          </View>
-        </Pressable>
-      </Modal>
     </View>
   );
 }

@@ -4,7 +4,7 @@ The panel shows the PR title, state, branch and diff size; whether it can be mer
 
 ## Merging
 
-The merge button defaults to a merge commit; its dropdown offers squash and rebase when the repository allows them. Merging asks for confirmation and is refused if the branch moved since the panel loaded. The branch is not deleted. The button is disabled for drafts, merge conflicts, branch protection blocks, and branches that must be updated first.
+The merge button defaults to a merge commit; its dropdown offers squash and rebase when the repository allows them. Clicking it merges right away; GitHub refuses the merge if the branch moved since the panel loaded. The branch is not deleted. The button is disabled for drafts, merge conflicts, branch protection blocks, and branches that must be updated first.
 
 ## Fixing failing checks
 
@@ -12,4 +12,4 @@ When checks fail, "Fix failing checks" fills the composer of the most recently a
 
 ## Setup
 
-Requires Paseo 0.16 or later. The daemon machine needs the GitHub CLI (`gh`) installed and signed in with `gh auth login`. The plugin runs `git` and `gh` in the workspace directory on the daemon. It reads PR data and check logs, and writes to GitHub only when you confirm a merge.
+Requires Paseo 0.16 or later. The daemon machine needs the GitHub CLI (`gh`) installed and signed in with `gh auth login`. The plugin runs `git` and `gh` in the workspace directory on the daemon. It reads PR data and check logs, and writes to GitHub only when you merge.
