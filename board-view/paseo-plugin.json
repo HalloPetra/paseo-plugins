@@ -1,0 +1,9 @@
+{
+  "id": "board-view",
+  "name": "Board view",
+  "description": "Kanban board of all open workspaces, grouped by status",
+  "media": [],
+  "requirements": {
+    "paseo": ">=0.15.4"
+  }
+}
