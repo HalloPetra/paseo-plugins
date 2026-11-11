@@ -1,0 +1,9 @@
+{
+  "id": "keep-awake",
+  "name": "Keep awake",
+  "description": "Keeps the host machine from sleeping while agents and subagents are working",
+  "media": [],
+  "requirements": {
+    "paseo": ">=0.16.0-beta.1"
+  }
+}
