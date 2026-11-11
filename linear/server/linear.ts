@@ -294,6 +294,16 @@ export function createLinearClient(options: { apiKey: string; endpoint?: string;
       return toIssue(result.issue);
     },
 
+    /** One issue by identifier (ENG-123) or id; null when it does not exist or is not visible. */
+    async issue(idOrIdentifier: string): Promise<Issue | null> {
+      try {
+        return (await findExact(idOrIdentifier))[0] ?? null;
+      } catch (error) {
+        if (error instanceof LinearApiError && /not found|Entity not found/i.test(error.message)) return null;
+        throw error;
+      }
+    },
+
     async teams() {
       const response = TeamsResponseSchema.parse(await graphql(TEAMS_QUERY));
       throwGraphqlErrors(response.errors);

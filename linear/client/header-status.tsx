@@ -5,33 +5,58 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
 import type { Issue } from "../shared/browse";
-import { listTeamStatesRpc, resolveWorkspaceIssueRpc, setIssueStateRpc } from "../shared/status";
+import { LINEAR_ICON } from "../shared/icon";
+import { LINKED_ISSUE_KEY, listTeamStatesRpc, resolveWorkspaceIssueRpc, setIssueStateRpc } from "../shared/status";
 import { HoverPressable } from "./hover-pressable";
 import { StatusIcon } from "./status-icon";
 
 const BUTTON_ID = "linear-status";
+const OPEN_BUTTON_ID = "linear-open";
 const REFRESH_MS = 60_000;
 
-/** What Paseo's workspace snapshot tells us about the branch and PR. */
+/** What Paseo's workspace snapshot tells us about the branch, PR, names and explicit link. */
 interface WorkspaceRef {
   id: string;
-  githubRuntime?: { pullRequest?: { url: string; headRefName: string } | null } | null;
+  name?: string;
+  title?: string | null;
+  metadata?: Record<string, unknown>;
+  githubRuntime?: { pullRequest?: { url: string; title: string; headRefName: string } | null } | null;
   gitRuntime?: { currentBranch?: string | null } | null;
 }
 
+type LookupInput = {
+  workspaceId: string;
+  linked: string | null;
+  prUrl: string | null;
+  branches: string[];
+  names: string[];
+};
+
 interface Linked {
-  input: { prUrl: string | null; branches: string[] };
+  input: LookupInput;
   key: string;
   issue: Issue | null;
   registration: PluginButtonRegistration | null;
+  openRegistration: PluginButtonRegistration | null;
+  /** The text last sent to the button, to skip no-op updates. */
+  title: string | null;
+  label: string | null;
   generation: number;
 }
 
-function lookupInput(workspace: WorkspaceRef) {
+const present = (value: string | null | undefined): value is string => Boolean(value && value.trim());
+
+function lookupInput(workspace: WorkspaceRef): { input: LookupInput; key: string } {
   const pr = workspace.githubRuntime?.pullRequest ?? null;
-  const branches = [...new Set([pr?.headRefName, workspace.gitRuntime?.currentBranch].filter((b): b is string => Boolean(b)))];
-  const input = { prUrl: pr?.url ?? null, branches };
-  return { input, key: `${input.prUrl ?? ""}|${branches.join(",")}` };
+  const linked = workspace.metadata?.[LINKED_ISSUE_KEY];
+  const input: LookupInput = {
+    workspaceId: workspace.id,
+    linked: typeof linked === "string" && linked.trim() ? linked.trim() : null,
+    prUrl: pr?.url ?? null,
+    branches: [...new Set([pr?.headRefName, workspace.gitRuntime?.currentBranch].filter(present))],
+    names: [...new Set([workspace.title, workspace.name, pr?.title].filter(present))],
+  };
+  return { input, key: JSON.stringify(input) };
 }
 
 /**
@@ -57,17 +82,53 @@ export function startHeaderStatus(client: PluginClientContext): () => void {
     };
   }
 
+  function openButtonFor(workspaceId: string, issue: Issue) {
+    return {
+      title: `Open ${issue.identifier} in Linear`,
+      icon: { svg: LINEAR_ICON },
+      behavior: {
+        kind: "action" as const,
+        // Read the issue at press time so the behavior never has to be updated.
+        onPress: async () => {
+          const current = linked.get(workspaceId)?.issue;
+          if (current) await openExternalUrl(current.url);
+        },
+      },
+    };
+  }
+
   function setIssue(workspaceId: string, issue: Issue | null) {
     const entry = linked.get(workspaceId);
     if (!entry || lifetime.signal.aborted) return;
     entry.issue = issue;
     if (!issue) {
       entry.registration?.remove();
+      entry.openRegistration?.remove();
       entry.registration = null;
+      entry.openRegistration = null;
+      entry.title = null;
+      entry.label = null;
     } else if (entry.registration) {
-      entry.registration.update(buttonFor(issue));
+      // Patch only the text, and only when it changed: Paseo closes an open popover when an
+      // update carries `behavior`, and the popover itself triggers a refresh when it opens.
+      const { title, label } = buttonFor(issue);
+      if (title !== entry.title || label !== entry.label) {
+        const identifierChanged = label !== entry.label;
+        entry.registration.update({ title, label });
+        if (identifierChanged) entry.openRegistration?.update({ title: openButtonFor(workspaceId, issue).title });
+        entry.title = title;
+        entry.label = label;
+      }
     } else {
-      entry.registration = client.addHeaderButton({ id: BUTTON_ID, workspaceId, button: buttonFor(issue) });
+      const button = buttonFor(issue);
+      entry.registration = client.addHeaderButton({ id: BUTTON_ID, workspaceId, button });
+      entry.openRegistration = client.addHeaderButton({
+        id: OPEN_BUTTON_ID,
+        workspaceId,
+        button: openButtonFor(workspaceId, issue),
+      });
+      entry.title = button.title;
+      entry.label = button.label;
     }
     notify();
   }
@@ -89,12 +150,11 @@ export function startHeaderStatus(client: PluginClientContext): () => void {
     const { input, key } = lookupInput(workspace);
     const existing = linked.get(workspace.id);
     if (existing?.key === key) return;
-    if (!input.prUrl && input.branches.length === 0) return forget(workspace.id);
     if (existing) {
       existing.input = input;
       existing.key = key;
     } else {
-      linked.set(workspace.id, { input, key, issue: null, registration: null, generation: 0 });
+      linked.set(workspace.id, { input, key, issue: null, registration: null, openRegistration: null, title: null, label: null, generation: 0 });
     }
     void refresh(workspace.id);
   }
@@ -103,6 +163,7 @@ export function startHeaderStatus(client: PluginClientContext): () => void {
     const entry = linked.get(workspaceId);
     if (!entry) return;
     entry.registration?.remove();
+    entry.openRegistration?.remove();
     linked.delete(workspaceId);
     notify();
   }
@@ -161,9 +222,10 @@ export function startHeaderStatus(client: PluginClientContext): () => void {
     }
 
     const muted = theme.colors.foregroundMuted;
+    // Paseo popovers are at least 280 wide with 12 padding per side: fill that, no wider.
     return (
-      <View style={{ minWidth: 220, gap: 2 }}>
-        <Text style={{ color: muted, fontSize: 12, paddingHorizontal: 8, paddingBottom: 6 }} numberOfLines={1}>
+      <View style={{ width: 256, gap: 2 }}>
+        <Text style={{ color: muted, fontSize: 12, lineHeight: 16, paddingHorizontal: 8, paddingBottom: 6 }} numberOfLines={3}>
           {issue.identifier} · {issue.title}
         </Text>
         {states.isLoading ? <ActivityIndicator color={muted} style={{ padding: 8 }} /> : null}
@@ -203,26 +265,6 @@ export function startHeaderStatus(client: PluginClientContext): () => void {
             {error ?? (states.error instanceof Error ? states.error.message : String(states.error))}
           </Text>
         ) : null}
-        <View style={{ height: 1, backgroundColor: theme.colors.border, marginVertical: 4 }} />
-        <HoverPressable
-          accessibilityRole="link"
-          onPress={() => {
-            close();
-            void openExternalUrl(issue.url);
-          }}
-          style={({ hovered }) => ({
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 8,
-            height: 30,
-            paddingHorizontal: 8,
-            borderRadius: 6,
-            backgroundColor: hovered ? theme.colors.surface2 : "transparent",
-          })}
-        >
-          <Icon name="ExternalLink" size={14} color={muted} />
-          <Text style={{ color: theme.colors.foreground, fontSize: 13 }}>Open in Linear</Text>
-        </HoverPressable>
       </View>
     );
   }
@@ -262,7 +304,10 @@ export function startHeaderStatus(client: PluginClientContext): () => void {
   return () => {
     lifetime.abort();
     releaseSubscription?.();
-    for (const entry of linked.values()) entry.registration?.remove();
+    for (const entry of linked.values()) {
+      entry.registration?.remove();
+      entry.openRegistration?.remove();
+    }
     linked.clear();
     listeners.clear();
   };

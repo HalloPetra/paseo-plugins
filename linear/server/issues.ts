@@ -1,10 +1,11 @@
 import type { RpcInput } from "@getpaseo/plugin";
-import type { PluginSettings } from "@getpaseo/plugin/server";
+import type { PluginHandlerContext, PluginSettings } from "@getpaseo/plugin/server";
 import { type browseIssuesRpc, issueAttachmentItem } from "../shared/browse";
 import type { searchIssuesRpc } from "../shared/issues";
 import type { listTeamStatesRpc, resolveWorkspaceIssueRpc, setIssueStateRpc } from "../shared/status";
 import type { linearSettings } from "../shared/settings";
 import { createLinearClient } from "./linear";
+import { resolveWorkspaceIssue as resolveIssue } from "./resolve";
 
 declare const process: { env: Record<string, string | undefined> };
 
@@ -40,8 +41,9 @@ export async function searchIssues({ query }: RpcInput<typeof searchIssuesRpc>, 
 export async function resolveWorkspaceIssue(
   input: RpcInput<typeof resolveWorkspaceIssueRpc>,
   settings: LinearSettings,
+  { paseo }: PluginHandlerContext,
 ) {
-  return { issue: await (await client(settings)).resolveWorkspaceIssue(input) };
+  return resolveIssue(input, await client(settings), paseo);
 }
 
 export async function listTeamStates({ teamId }: RpcInput<typeof listTeamStatesRpc>, settings: LinearSettings) {

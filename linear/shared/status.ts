@@ -11,11 +11,22 @@ export const WorkflowStateSchema = z.object({
 });
 export type WorkflowState = z.infer<typeof WorkflowStateSchema>;
 
-/** Finds the Linear issue for a workspace from its PR URL, then its branch names. */
+/** Workspace metadata key holding the linked issue identifier (set by the composer button or /link-linear). */
+export const LINKED_ISSUE_KEY = "linear.issue";
+
+/** Finds the Linear issue for a workspace; see server/resolve.ts for the order of signals. */
 export const resolveWorkspaceIssueRpc = defineRpc({
   name: "linear.workspace.issue",
-  input: z.object({ prUrl: z.string().nullable(), branches: z.array(z.string()) }),
-  output: z.object({ issue: IssueSchema.nullable() }),
+  input: z.object({
+    workspaceId: z.string(),
+    /** Explicit link from workspace metadata. */
+    linked: z.string().nullable(),
+    prUrl: z.string().nullable(),
+    branches: z.array(z.string()),
+    /** Workspace name/title and PR title. */
+    names: z.array(z.string()),
+  }),
+  output: z.object({ issue: IssueSchema.nullable(), source: z.string().nullable() }),
 });
 
 export const listTeamStatesRpc = defineRpc({

@@ -2,7 +2,9 @@ Adds a "Linear" button to the composer toolbar, next to the model and mode contr
 
 The picker shows each issue with team and number badges, status and priority icons, assignee, project, and labels. You can expand a row to preview the description, or open the issue in Linear. Filter by team, status, and assignee, and sort by recently updated, newest, or priority. Search by title, issue number, or identifier such as ENG-123. Filter choices are remembered on each device.
 
-**Issue status in the workspace header.** When a workspace's pull request is linked to a Linear issue (the link Linear's GitHub integration creates), or its branch matches an issue's branch, the workspace header shows the issue identifier with its status icon. Pressing it lists the team's workflow states; choosing one updates the issue's status in Linear. It also links to the issue. The status refreshes every minute while the header is on screen and whenever the list opens.
+**Issue status in the workspace header.** Workspaces tied to a Linear issue show the issue identifier with its status icon in the header. Pressing it lists the team's workflow states; choosing one updates the issue's status in Linear. It also links to the issue. The status refreshes every minute while the header is on screen and whenever the list opens.
+
+A workspace is tied to an issue by, in order: an explicit link (set automatically when you start a chat with the Linear button, or with `/link-linear PROD-123`; `/link-linear none` removes it), the issue Linear links to the workspace's pull request, an identifier in the branch, pull request title or workspace name, Linear's branch matching, a "linear issue 123" style mention in those names, or the issue named in the first message of the workspace's chats or looked up by Linear tools in that first turn.
 
 ## Setup
 

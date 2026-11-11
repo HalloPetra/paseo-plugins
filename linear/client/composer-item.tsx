@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Text } from "react-native";
 import { type Issue, issueAttachmentItem } from "../shared/browse";
 import { ISSUE_SOURCE_ID } from "../shared/issues";
+import { LINKED_ISSUE_KEY } from "../shared/status";
 import { LINEAR_ICON } from "../shared/icon";
 import { HoverPressable } from "./hover-pressable";
 import { IssuePicker } from "./issue-picker";
@@ -21,6 +22,8 @@ export function LinearComposerItem({ theme, layout }: PluginComposerItemProps) {
       (attachment) => attachment.sourceId === ISSUE_SOURCE_ID && attachment.item.id === issue.id,
     );
     if (!attached) composer.addAttachment({ sourceId: ISSUE_SOURCE_ID, item: issueAttachmentItem(issue) });
+    // Tag the new agent; the server copies it onto the workspace so its header finds the issue.
+    await composer.setMetadata({ [LINKED_ISSUE_KEY]: issue.identifier }).catch(() => undefined);
     await composer.focus();
   }
 
