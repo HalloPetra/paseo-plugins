@@ -1,0 +1,9 @@
+{
+  "id": "auto-sort",
+  "name": "Auto sort",
+  "description": "Archive workspaces automatically when their pull request is merged",
+  "media": [],
+  "requirements": {
+    "paseo": ">=0.16.0-beta.1"
+  }
+}
