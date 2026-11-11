@@ -1,6 +1,6 @@
 import type { PluginTheme } from "@getpaseo/plugin";
 import type { PullRequest } from "../shared/pr";
-import { AgentPromptButton, appendPrompt } from "./agent-prompt";
+import { AgentSendButton } from "./agent-prompt";
 
 type Colors = PluginTheme["colors"];
 
@@ -25,14 +25,14 @@ export function ResolveConflictsButton({
   colors: Colors;
 }) {
   return (
-    <AgentPromptButton
+    <AgentSendButton
       workspaceId={workspaceId}
       label="Resolve conflicts"
-      pendingLabel="Preparing…"
+      pendingLabel="Sending…"
       icon="GitMerge"
       tone={colors.statusWarning}
       colors={colors}
-      fill={(composer) => appendPrompt(composer, buildPrompt(pr))}
+      message={() => ({ text: buildPrompt(pr) })}
     />
   );
 }
