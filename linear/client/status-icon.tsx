@@ -10,6 +10,9 @@ const ICONS: Record<string, string> = {
   canceled: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 14 14"><circle cx="7" cy="7" r="6.25" fill="currentColor"/><path d="m4.9 4.9 4.2 4.2m0-4.2-4.2 4.2" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/></svg>`,
 };
 
+// Linear's "Duplicate" state type draws like canceled.
+ICONS.duplicate = ICONS.canceled;
+
 export function StatusIcon({ type, color, size = 14 }: { type: string; color: string; size?: number }) {
   return <Icon icon={{ svg: ICONS[type] ?? ICONS.unstarted }} size={size} color={color} />;
 }

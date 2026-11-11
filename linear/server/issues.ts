@@ -2,6 +2,7 @@ import type { RpcInput } from "@getpaseo/plugin";
 import type { PluginSettings } from "@getpaseo/plugin/server";
 import { type browseIssuesRpc, issueAttachmentItem } from "../shared/browse";
 import type { searchIssuesRpc } from "../shared/issues";
+import type { listTeamStatesRpc, resolveWorkspaceIssueRpc, setIssueStateRpc } from "../shared/status";
 import type { linearSettings } from "../shared/settings";
 import { createLinearClient } from "./linear";
 
@@ -34,4 +35,22 @@ export async function searchIssues({ query }: RpcInput<typeof searchIssuesRpc>, 
     sort: "updated",
   });
   return { items: issues.slice(0, 30).map(issueAttachmentItem) };
+}
+
+export async function resolveWorkspaceIssue(
+  input: RpcInput<typeof resolveWorkspaceIssueRpc>,
+  settings: LinearSettings,
+) {
+  return { issue: await (await client(settings)).resolveWorkspaceIssue(input) };
+}
+
+export async function listTeamStates({ teamId }: RpcInput<typeof listTeamStatesRpc>, settings: LinearSettings) {
+  return (await client(settings)).teamStates(teamId);
+}
+
+export async function setIssueState(
+  { issueId, stateId }: RpcInput<typeof setIssueStateRpc>,
+  settings: LinearSettings,
+) {
+  return { issue: await (await client(settings)).setIssueState(issueId, stateId) };
 }

@@ -17,8 +17,8 @@ const LinearIssueSchema = z.object({
   priority: z.number(),
   priorityLabel: z.string(),
   updatedAt: z.string(),
-  team: z.object({ key: z.string() }),
-  state: z.object({ name: z.string(), type: z.string(), color: z.string() }),
+  team: z.object({ id: z.string(), key: z.string() }),
+  state: z.object({ id: z.string(), name: z.string(), type: z.string(), color: z.string() }),
   assignee: z.object({ displayName: z.string() }).nullable(),
   project: z.object({ name: z.string() }).nullable(),
   labels: z.object({ nodes: z.array(z.object({ name: z.string(), color: z.string() })) }),
@@ -49,6 +49,36 @@ const TeamsResponseSchema = z.object({
   errors: GraphqlErrorsSchema,
 });
 
+const WorkflowStateSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  type: z.string(),
+  color: z.string(),
+  position: z.number(),
+});
+const AttachmentsForUrlResponseSchema = z.object({
+  data: z
+    .object({ attachmentsForURL: z.object({ nodes: z.array(z.object({ issue: LinearIssueSchema.nullable() })) }) })
+    .nullable()
+    .optional(),
+  errors: GraphqlErrorsSchema,
+});
+const BranchSearchResponseSchema = z.object({
+  data: z.object({ issueVcsBranchSearch: LinearIssueSchema.nullable() }).nullable().optional(),
+  errors: GraphqlErrorsSchema,
+});
+const WorkflowStatesResponseSchema = z.object({
+  data: z.object({ workflowStates: z.object({ nodes: z.array(WorkflowStateSchema) }) }).nullable().optional(),
+  errors: GraphqlErrorsSchema,
+});
+const IssueUpdateResponseSchema = z.object({
+  data: z
+    .object({ issueUpdate: z.object({ success: z.boolean(), issue: LinearIssueSchema.nullable() }) })
+    .nullable()
+    .optional(),
+  errors: GraphqlErrorsSchema,
+});
+
 const ISSUE_FIELDS = `
   id
   identifier
@@ -59,8 +89,8 @@ const ISSUE_FIELDS = `
   priority
   priorityLabel
   updatedAt
-  team { key }
-  state { name type color }
+  team { id key }
+  state { id name type color }
   assignee { displayName }
   project { name }
   labels { nodes { name color } }
@@ -86,6 +116,32 @@ const TEAMS_QUERY = `
   }
 `;
 
+const ATTACHMENTS_FOR_URL_QUERY = `
+  query PaseoLinearIssueForUrl($url: String!) {
+    attachmentsForURL(url: $url, first: 5) { nodes { issue { ${ISSUE_FIELDS} } } }
+  }
+`;
+
+const BRANCH_SEARCH_QUERY = `
+  query PaseoLinearIssueForBranch($branchName: String!) {
+    issueVcsBranchSearch(branchName: $branchName) { ${ISSUE_FIELDS} }
+  }
+`;
+
+const WORKFLOW_STATES_QUERY = `
+  query PaseoLinearStates($teamId: ID!) {
+    workflowStates(first: 100, filter: { team: { id: { eq: $teamId } } }) {
+      nodes { id name type color position }
+    }
+  }
+`;
+
+const ISSUE_UPDATE_MUTATION = `
+  mutation PaseoLinearSetState($id: String!, $stateId: String!) {
+    issueUpdate(id: $id, input: { stateId: $stateId }) { success issue { ${ISSUE_FIELDS} } }
+  }
+`;
+
 const LINEAR_IDENTIFIER = /^[A-Z][A-Z0-9]+-\d+$/i;
 
 export interface BrowseOptions {
@@ -107,6 +163,7 @@ function toIssue(issue: LinearIssue): Issue {
   return {
     id: issue.id,
     identifier: issue.identifier,
+    teamId: issue.team.id,
     teamKey: issue.team.key,
     number: issue.number,
     title: issue.title,
@@ -136,6 +193,13 @@ function describeHttpFailure(status: number): string {
 function throwGraphqlErrors(errors: Array<{ message: string }> | undefined): void {
   if (!errors || errors.length === 0) return;
   throw new LinearApiError(errors.map((error) => error.message).join("; "));
+}
+
+// Linear's workflow order: triage, backlog, todo, in progress, done, canceled.
+const STATE_TYPE_ORDER = ["triage", "backlog", "unstarted", "started", "completed", "canceled"];
+function stateTypeRank(type: string): number {
+  const index = STATE_TYPE_ORDER.indexOf(type);
+  return index === -1 ? STATE_TYPE_ORDER.length : index;
 }
 
 export function createLinearClient(options: { apiKey: string; endpoint?: string; request?: typeof fetch }) {
@@ -193,6 +257,41 @@ export function createLinearClient(options: { apiKey: string; endpoint?: string;
       const issues = await listIssues(filter, options.sort === "priority" ? 100 : 50, orderBy);
       if (options.sort === "priority") issues.sort(byPriority);
       return { issues };
+    },
+
+    /** The issue Linear links to a PR (its GitHub integration), else the one matching a branch. */
+    async resolveWorkspaceIssue(input: { prUrl: string | null; branches: string[] }): Promise<Issue | null> {
+      if (input.prUrl) {
+        const response = AttachmentsForUrlResponseSchema.parse(await graphql(ATTACHMENTS_FOR_URL_QUERY, { url: input.prUrl }));
+        throwGraphqlErrors(response.errors);
+        const linked = response.data?.attachmentsForURL.nodes.find((node) => node.issue)?.issue;
+        if (linked) return toIssue(linked);
+      }
+      for (const branchName of input.branches) {
+        const response = BranchSearchResponseSchema.parse(await graphql(BRANCH_SEARCH_QUERY, { branchName }));
+        throwGraphqlErrors(response.errors);
+        const issue = response.data?.issueVcsBranchSearch;
+        if (issue) return toIssue(issue);
+      }
+      return null;
+    },
+
+    async teamStates(teamId: string) {
+      const response = WorkflowStatesResponseSchema.parse(await graphql(WORKFLOW_STATES_QUERY, { teamId }));
+      throwGraphqlErrors(response.errors);
+      if (!response.data) throw new LinearApiError("Linear returned no workflow states");
+      const states = response.data.workflowStates.nodes.sort(
+        (a, b) => stateTypeRank(a.type) - stateTypeRank(b.type) || a.position - b.position,
+      );
+      return { states };
+    },
+
+    async setIssueState(issueId: string, stateId: string): Promise<Issue> {
+      const response = IssueUpdateResponseSchema.parse(await graphql(ISSUE_UPDATE_MUTATION, { id: issueId, stateId }));
+      throwGraphqlErrors(response.errors);
+      const result = response.data?.issueUpdate;
+      if (!result?.success || !result.issue) throw new LinearApiError("Linear did not update the issue");
+      return toIssue(result.issue);
     },
 
     async teams() {

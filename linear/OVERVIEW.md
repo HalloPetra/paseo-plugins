@@ -2,10 +2,12 @@ Adds a "Linear" button to the composer toolbar, next to the model and mode contr
 
 The picker shows each issue with team and number badges, status and priority icons, assignee, project, and labels. You can expand a row to preview the description, or open the issue in Linear. Filter by team, status, and assignee, and sort by recently updated, newest, or priority. Search by title, issue number, or identifier such as ENG-123. Filter choices are remembered on each device.
 
+**Issue status in the workspace header.** When a workspace's pull request is linked to a Linear issue (the link Linear's GitHub integration creates), or its branch matches an issue's branch, the workspace header shows the issue identifier with its status icon. Pressing it lists the team's workflow states; choosing one updates the issue's status in Linear. It also links to the issue. The status refreshes every minute while the header is on screen and whenever the list opens.
+
 ## Setup
 
 Requires Paseo 0.16.0-beta.1 or later on both the app and the daemon. Create a personal API key in Linear under Settings → Security & access → Personal API keys, then paste it in Settings → Plugins → Linear. If no key is saved, the plugin falls back to the `LINEAR_API_KEY` environment variable of the daemon.
 
 ## What it sends and stores
 
-Queries go from the daemon to `api.linear.app` using your API key. The key is stored in this host's plugin settings as plain JSON, not in a credential vault. Lists show up to 50 issues. Priority sort orders the 100 most recently updated matches.
+Queries and status changes go from the daemon to `api.linear.app` using your API key. Changing a status in the header writes to Linear as your user. The key is stored in this host's plugin settings as plain JSON, not in a credential vault. Lists show up to 50 issues. Priority sort orders the 100 most recently updated matches.
