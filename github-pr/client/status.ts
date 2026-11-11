@@ -19,9 +19,10 @@ export function checksRollup(pr: PullRequest): ChecksRollup {
 export function prStatusColor(pr: PullRequest, colors: Colors): string {
   if (pr.state === "MERGED") return MERGED_COLOR;
   if (pr.state === "CLOSED") return colors.foregroundMuted;
-  if (pr.mergeable === "CONFLICTING" || pr.mergeStateStatus === "DIRTY") return colors.statusDanger;
+  // Red is reserved for failing checks; conflicts are amber like other merge blockers.
   const rollup = checksRollup(pr);
   if (rollup === "failure") return colors.statusDanger;
+  if (pr.mergeable === "CONFLICTING" || pr.mergeStateStatus === "DIRTY") return colors.statusWarning;
   if (rollup === "pending") return colors.statusWarning;
   if (pr.mergeStateStatus === "BLOCKED" || pr.mergeStateStatus === "BEHIND") return colors.statusWarning;
   return colors.statusSuccess;

@@ -6,8 +6,9 @@ import { Pressable, Text, View } from "react-native";
 import { z } from "zod";
 import type { Check, PrComment, PullRequest } from "../shared/pr";
 import { sanitizeMarkdown } from "./markdown";
-import { FixChecksButton } from "./fix-checks";
+import { FixChecksCard } from "./fix-checks";
 import { MergeBox } from "./merge-box";
+import { ResolveConflictsButton } from "./resolve-conflicts";
 import { Spinner } from "./spinner";
 import { MERGED_COLOR } from "./status";
 import { usePr } from "./use-pr";
@@ -115,7 +116,7 @@ function mergeVisual(pr: PullRequest, colors: Colors) {
   if (pr.state === "MERGED") return { icon: "GitMerge", color: MERGED_COLOR, text: "Merged" };
   if (pr.state === "CLOSED") return { icon: "GitPullRequestClosed", color: colors.statusDanger, text: "Closed" };
   if (pr.mergeable === "CONFLICTING" || pr.mergeStateStatus === "DIRTY")
-    return { icon: "TriangleAlert", color: colors.statusDanger, text: MERGE_STATE_TEXT.DIRTY };
+    return { icon: "TriangleAlert", color: colors.statusWarning, text: MERGE_STATE_TEXT.DIRTY };
   const s = pr.mergeStateStatus;
   const color =
     s === "CLEAN" || s === "HAS_HOOKS" ? colors.statusSuccess
@@ -278,7 +279,11 @@ function PrView({ pr, directory, workspaceId, colors, styles }: { pr: PullReques
           {pr.reviewDecision && pr.state === "OPEN" && (
             <Text style={styles.muted}>Review: {REVIEW_TEXT[pr.reviewDecision] ?? pr.reviewDecision}</Text>
           )}
-          <MergeBox key={pr.number} pr={pr} directory={directory} colors={colors} />
+          {pr.state === "OPEN" && (pr.mergeable === "CONFLICTING" || pr.mergeStateStatus === "DIRTY") ? (
+            <ResolveConflictsButton pr={pr} workspaceId={workspaceId} colors={colors} />
+          ) : (
+            <MergeBox key={pr.number} pr={pr} directory={directory} colors={colors} />
+          )}
         </View>
       </Section>
 
@@ -286,7 +291,7 @@ function PrView({ pr, directory, workspaceId, colors, styles }: { pr: PullReques
         checks={pr.checks}
         colors={colors}
         styles={styles}
-        fix={pr.state === "OPEN" ? <FixChecksButton pr={pr} directory={directory} workspaceId={workspaceId} colors={colors} /> : undefined}
+        fix={pr.state === "OPEN" ? <FixChecksCard pr={pr} directory={directory} workspaceId={workspaceId} colors={colors} /> : undefined}
       />
 
       <Section id="description" title="Description" styles={styles}>
