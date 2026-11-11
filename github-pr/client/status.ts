@@ -3,6 +3,9 @@ import type { PullRequest } from "../shared/pr";
 
 type Colors = PluginTheme["colors"];
 
+/** GitHub's merged purple. Paseo themes have no purple token; this one reads on light and dark. */
+export const MERGED_COLOR = "#8957e5";
+
 export type ChecksRollup = "failure" | "pending" | "success" | "none";
 
 export function checksRollup(pr: PullRequest): ChecksRollup {
@@ -14,7 +17,7 @@ export function checksRollup(pr: PullRequest): ChecksRollup {
 
 /** One color summarizing the PR for the header button. */
 export function prStatusColor(pr: PullRequest, colors: Colors): string {
-  if (pr.state === "MERGED") return colors.accent;
+  if (pr.state === "MERGED") return MERGED_COLOR;
   if (pr.state === "CLOSED") return colors.foregroundMuted;
   if (pr.mergeable === "CONFLICTING" || pr.mergeStateStatus === "DIRTY") return colors.statusDanger;
   const rollup = checksRollup(pr);

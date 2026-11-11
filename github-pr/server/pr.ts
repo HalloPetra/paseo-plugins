@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import type { RpcInput, RpcOutput } from "@getpaseo/plugin";
-import type { Check, PrComment, getPrRpc } from "../shared/pr";
+import type { Check, MergeMethod, PrComment, getPrRpc, mergePrRpc } from "../shared/pr";
 
 // The daemon may not inherit the login shell PATH, so include common gh locations.
 const PATH = [process.env.PATH, "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"]
@@ -25,7 +25,7 @@ function run(cmd: string, args: string[], cwd: string): Promise<string> {
 }
 
 const PR_FIELDS = [
-  "number", "title", "body", "url", "state", "isDraft", "author", "headRefName", "baseRefName",
+  "number", "title", "body", "url", "state", "isDraft", "author", "headRefName", "headRefOid", "baseRefName",
   "additions", "deletions", "changedFiles", "mergeable", "mergeStateStatus", "reviewDecision",
   "statusCheckRollup", "comments", "reviews",
 ].join(",");
@@ -67,6 +67,36 @@ function normalizeCheck(raw: Json): Check {
 }
 
 const CHECK_ORDER: Record<Check["status"], number> = { failure: 0, pending: 1, success: 2, neutral: 3, skipped: 4 };
+
+async function allowedMergeMethods(cwd: string): Promise<MergeMethod[]> {
+  try {
+    const repo: Json = JSON.parse(
+      await run("gh", ["repo", "view", "--json", "mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed"], cwd),
+    );
+    const methods: MergeMethod[] = [];
+    if (repo.mergeCommitAllowed) methods.push("merge");
+    if (repo.squashMergeAllowed) methods.push("squash");
+    if (repo.rebaseMergeAllowed) methods.push("rebase");
+    return methods;
+  } catch (error) {
+    console.error("[github-pr] repo merge settings failed", error);
+    return ["merge", "squash", "rebase"];
+  }
+}
+
+export async function mergePr({ directory, number, method, headRefOid }: RpcInput<typeof mergePrRpc>): Promise<RpcOutput<typeof mergePrRpc>> {
+  try {
+    // No --delete-branch: it would try to switch the local checkout, which breaks worktrees.
+    const out = await run(
+      "gh",
+      ["pr", "merge", String(number), `--${method}`, "--match-head-commit", headRefOid],
+      directory,
+    );
+    return { ok: true, message: out.trim() || `Merged #${number}` };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : String(error) };
+  }
+}
 
 async function inlineComments(cwd: string, number: number): Promise<PrComment[]> {
   try {
@@ -113,6 +143,7 @@ export async function getPr({ directory }: RpcInput<typeof getPrRpc>): Promise<R
     return { pr: null, branch, error: message };
   }
 
+  const mergeMethodsPromise = allowedMergeMethods(directory);
   const comments: PrComment[] = [
     ...((raw.comments ?? []) as Json[]).map((c, i) => ({
       id: c.id ?? `comment-${i}`,
@@ -142,6 +173,8 @@ export async function getPr({ directory }: RpcInput<typeof getPrRpc>): Promise<R
     ...(await inlineComments(directory, raw.number)),
   ].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
+  const mergeMethods = await mergeMethodsPromise;
+
   const checks = ((raw.statusCheckRollup ?? []) as Json[])
     .map(normalizeCheck)
     .sort((a, b) => CHECK_ORDER[a.status] - CHECK_ORDER[b.status] || a.name.localeCompare(b.name));
@@ -158,6 +191,7 @@ export async function getPr({ directory }: RpcInput<typeof getPrRpc>): Promise<R
       isDraft: Boolean(raw.isDraft),
       author: raw.author?.login ?? "unknown",
       headRefName: raw.headRefName ?? "",
+      headRefOid: raw.headRefOid ?? "",
       baseRefName: raw.baseRefName ?? "",
       additions: raw.additions ?? 0,
       deletions: raw.deletions ?? 0,
@@ -165,6 +199,7 @@ export async function getPr({ directory }: RpcInput<typeof getPrRpc>): Promise<R
       mergeable: raw.mergeable ?? "UNKNOWN",
       mergeStateStatus: raw.mergeStateStatus ?? "UNKNOWN",
       reviewDecision: raw.reviewDecision || null,
+      mergeMethods,
       checks,
       comments,
     },

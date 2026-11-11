@@ -31,6 +31,7 @@ export const prSchema = z.object({
   isDraft: z.boolean(),
   author: z.string(),
   headRefName: z.string(),
+  headRefOid: z.string(),
   baseRefName: z.string(),
   additions: z.number(),
   deletions: z.number(),
@@ -38,6 +39,8 @@ export const prSchema = z.object({
   mergeable: z.string(),
   mergeStateStatus: z.string(),
   reviewDecision: z.string().nullable(),
+  /** Merge methods the base repository allows. */
+  mergeMethods: z.array(z.enum(["merge", "squash", "rebase"])),
   checks: z.array(checkSchema),
   comments: z.array(commentSchema),
 });
@@ -54,4 +57,19 @@ export const getPrRpc = defineRpc({
     branch: z.string().nullable(),
     error: z.string().nullable(),
   }),
+});
+
+export const mergeMethodSchema = z.enum(["merge", "squash", "rebase"]);
+export type MergeMethod = z.infer<typeof mergeMethodSchema>;
+
+export const mergePrRpc = defineRpc({
+  name: "pr.merge",
+  input: z.object({
+    directory: z.string(),
+    number: z.number(),
+    method: mergeMethodSchema,
+    /** Refuse to merge if the branch moved since the panel loaded. */
+    headRefOid: z.string(),
+  }),
+  output: z.object({ ok: z.boolean(), message: z.string() }),
 });

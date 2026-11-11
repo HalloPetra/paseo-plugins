@@ -6,6 +6,8 @@ import { Pressable, Text, View } from "react-native";
 import { z } from "zod";
 import type { Check, PrComment, PullRequest } from "../shared/pr";
 import { sanitizeMarkdown } from "./markdown";
+import { MergeBox } from "./merge-box";
+import { MERGED_COLOR } from "./status";
 import { usePr } from "./use-pr";
 import { openExternal } from "./web";
 
@@ -75,7 +77,7 @@ function Section({ id, title, right, children, styles }: { id: string; title: st
 }
 
 function stateBadge(pr: PullRequest, colors: Colors): { label: string; color: string } {
-  if (pr.state === "MERGED") return { label: "Merged", color: colors.accent };
+  if (pr.state === "MERGED") return { label: "Merged", color: MERGED_COLOR };
   if (pr.state === "CLOSED") return { label: "Closed", color: colors.statusDanger };
   if (pr.isDraft) return { label: "Draft", color: colors.foregroundMuted };
   return { label: "Open", color: colors.statusSuccess };
@@ -108,7 +110,7 @@ const REVIEW_TEXT: Record<string, string> = {
 };
 
 function mergeVisual(pr: PullRequest, colors: Colors) {
-  if (pr.state === "MERGED") return { icon: "GitMerge", color: colors.accent, text: "Merged" };
+  if (pr.state === "MERGED") return { icon: "GitMerge", color: MERGED_COLOR, text: "Merged" };
   if (pr.state === "CLOSED") return { icon: "GitPullRequestClosed", color: colors.statusDanger, text: "Closed" };
   if (pr.mergeable === "CONFLICTING" || pr.mergeStateStatus === "DIRTY")
     return { icon: "TriangleAlert", color: colors.statusDanger, text: MERGE_STATE_TEXT.DIRTY };
@@ -245,7 +247,7 @@ function CommentCard({ comment, colors, styles }: { comment: PrComment; colors: 
   );
 }
 
-function PrView({ pr, colors, styles }: { pr: PullRequest; colors: Colors; styles: Styles }) {
+function PrView({ pr, directory, colors, styles }: { pr: PullRequest; directory: string; colors: Colors; styles: Styles }) {
   const state = stateBadge(pr, colors);
   const merge = mergeVisual(pr, colors);
   return (
@@ -265,7 +267,7 @@ function PrView({ pr, colors, styles }: { pr: PullRequest; colors: Colors; style
       </View>
 
       <Section id="merge" title="Mergeability" styles={styles}>
-        <View style={[styles.card, styles.cardBody]}>
+        <View style={[styles.card, styles.cardBody, { borderColor: merge.color }]}>
           <View style={styles.row}>
             <Icon name={merge.icon} size={14} color={merge.color} />
             <Text style={[styles.text, { color: merge.color, flex: 1 }]}>{merge.text}</Text>
@@ -273,6 +275,7 @@ function PrView({ pr, colors, styles }: { pr: PullRequest; colors: Colors; style
           {pr.reviewDecision && pr.state === "OPEN" && (
             <Text style={styles.muted}>Review: {REVIEW_TEXT[pr.reviewDecision] ?? pr.reviewDecision}</Text>
           )}
+          <MergeBox key={pr.number} pr={pr} directory={directory} colors={colors} />
         </View>
       </Section>
 
@@ -357,7 +360,7 @@ export function PrPanel({ theme, layout, workspaceId, tab }: PluginWorkspacePane
       ) : (
         <ScrollView contentContainerStyle={styles.content}>
           <SectionsContext.Provider value={sections}>
-            <PrView pr={pr} colors={colors} styles={styles} />
+            <PrView pr={pr} directory={directory} colors={colors} styles={styles} />
           </SectionsContext.Provider>
         </ScrollView>
       )}
