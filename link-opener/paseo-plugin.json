@@ -1,0 +1,9 @@
+{
+  "id": "link-opener",
+  "name": "Link opener",
+  "description": "Choose between the system browser and the Paseo browser when you click a link in an agent chat",
+  "media": [],
+  "requirements": {
+    "paseo": ">=0.16.0-beta.1"
+  }
+}
