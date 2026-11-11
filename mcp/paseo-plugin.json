@@ -1,0 +1,9 @@
+{
+  "id": "mcp",
+  "name": "MCP",
+  "description": "Manage Claude Code MCP servers: add, remove, sign in again, and choose which tools agents get",
+  "media": [],
+  "requirements": {
+    "paseo": ">=0.16.0-beta.1"
+  }
+}
