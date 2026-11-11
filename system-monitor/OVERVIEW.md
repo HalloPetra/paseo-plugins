@@ -1,0 +1,5 @@
+System monitor shows how hard the host machine running the Paseo daemon is working. A compact block at the bottom of the sidebar shows CPU, memory, and disk usage as small colored bars, plus network download and upload rates. Bars turn amber at 70% and red at 90%. Values come from the daemon machine, not the device you view them on, so a remote host reports its own usage.
+
+Memory counts what applications actually hold, as Activity Monitor on macOS and `free` on Linux do, so reclaimable file cache is not counted as used. Network rates add up physical interfaces and skip loopback, VPN tunnels, and container bridges. Disk usage is for the data volume on macOS and the root filesystem on Linux.
+
+The daemon samples every two seconds, and only while a sidebar is showing it. It reads system counters locally and sends nothing off the machine. Supported on macOS and Linux; on Windows, network rates and the memory breakdown are unavailable.

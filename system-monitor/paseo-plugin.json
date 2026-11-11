@@ -1,0 +1,9 @@
+{
+  "id": "system-monitor",
+  "name": "System monitor",
+  "description": "Live CPU, memory, network, and disk usage of the host machine in the sidebar",
+  "media": [],
+  "requirements": {
+    "paseo": ">=0.16.0-beta.1"
+  }
+}
