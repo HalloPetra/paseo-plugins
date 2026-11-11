@@ -1,6 +1,6 @@
 import type { PluginTheme } from "@getpaseo/plugin";
 import { Icon } from "@getpaseo/plugin/client/ui";
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 import { useEffect, useState } from "react";
 import { Modal, Pressable, Text, useWindowDimensions, View } from "react-native";
 
@@ -8,7 +8,8 @@ type Colors = PluginTheme["colors"];
 
 export interface DropdownOption<Value extends string> {
   value: Value;
-  label: string;
+  /** A string, or a node for labels that read live state. */
+  label: ReactNode;
   description?: string;
 }
 
@@ -113,7 +114,11 @@ export function Dropdown<Value extends string>({
                   {isSelected && <Icon name="Check" size={14} color={colors.foreground} />}
                 </View>
                 <View style={{ flex: 1, gap: 2 }}>
-                  <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "600" }}>{option.label}</Text>
+                  {typeof option.label === "string" ? (
+                    <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "600" }}>{option.label}</Text>
+                  ) : (
+                    option.label
+                  )}
                   {option.description && (
                     <Text style={{ color: colors.foregroundMuted, fontSize: 12 }}>{option.description}</Text>
                   )}

@@ -73,3 +73,15 @@ export const mergePrRpc = defineRpc({
   }),
   output: z.object({ ok: z.boolean(), message: z.string() }),
 });
+
+export const CHECK_LOGS_SOURCE_ID = "check-logs";
+
+export const checkLogsRpc = defineRpc({
+  name: "pr.check-logs",
+  input: z.object({ directory: z.string(), number: z.number() }),
+  output: z.object({
+    /** Markdown document with the failing checks' annotations and log excerpts. */
+    text: z.string(),
+    failing: z.array(z.object({ name: z.string(), workflow: z.string().nullable() })),
+  }),
+});

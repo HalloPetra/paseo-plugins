@@ -6,6 +6,7 @@ import { useRef, useState } from "react";
 import { Modal, Pressable, Text, View } from "react-native";
 import { type MergeMethod, type PullRequest, mergePrRpc } from "../shared/pr";
 import { Dropdown } from "./dropdown";
+import { Spinner } from "./spinner";
 
 type Colors = PluginTheme["colors"];
 
@@ -85,7 +86,7 @@ export function MergeBox({ pr, directory, colors }: { pr: PullRequest; directory
           onPress={() => setConfirming(true)}
           style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 8, paddingHorizontal: 10, backgroundColor: bg }}
         >
-          <Icon name={current.icon} size={14} color={fg} />
+          {mutation.isPending ? <Spinner size={14} color={fg} /> : <Icon name={current.icon} size={14} color={fg} />}
           <Text style={{ color: fg, fontSize: 13, fontWeight: "600" }} numberOfLines={1}>
             {mutation.isPending ? "Merging…" : current.action}
           </Text>
@@ -174,9 +175,12 @@ export function MergeBox({ pr, directory, colors }: { pr: PullRequest; directory
               onPress={() => mutation.mutate()}
               style={{ paddingVertical: 8, paddingHorizontal: 12, borderRadius: 6, backgroundColor: warn ? colors.statusWarning : colors.statusSuccess }}
             >
-              <Text style={{ color: colors.accentForeground, fontSize: 13, fontWeight: "600" }}>
-                {mutation.isPending ? "Merging…" : `Confirm ${current.action.toLowerCase()}`}
-              </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                {mutation.isPending && <Spinner size={13} color={colors.accentForeground} />}
+                <Text style={{ color: colors.accentForeground, fontSize: 13, fontWeight: "600" }}>
+                  {mutation.isPending ? "Merging…" : `Confirm ${current.action.toLowerCase()}`}
+                </Text>
+              </View>
             </Pressable>
           </View>
           </View>

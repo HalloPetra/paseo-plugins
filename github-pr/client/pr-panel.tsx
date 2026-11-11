@@ -6,7 +6,9 @@ import { Pressable, Text, View } from "react-native";
 import { z } from "zod";
 import type { Check, PrComment, PullRequest } from "../shared/pr";
 import { sanitizeMarkdown } from "./markdown";
+import { FixChecksButton } from "./fix-checks";
 import { MergeBox } from "./merge-box";
+import { Spinner } from "./spinner";
 import { MERGED_COLOR } from "./status";
 import { usePr } from "./use-pr";
 import { openExternal } from "./web";
@@ -119,7 +121,7 @@ function mergeVisual(pr: PullRequest, colors: Colors) {
     s === "CLEAN" || s === "HAS_HOOKS" ? colors.statusSuccess
     : s === "BLOCKED" || s === "BEHIND" || s === "UNSTABLE" ? colors.statusWarning
     : colors.foregroundMuted;
-  const icon = s === "CLEAN" || s === "HAS_HOOKS" ? "GitMerge" : s === "UNKNOWN" ? "Loader" : "ShieldAlert";
+  const icon = s === "CLEAN" || s === "HAS_HOOKS" ? "GitMerge" : s === "UNKNOWN" ? "LoaderCircle" : "ShieldAlert";
   return { icon, color, text: MERGE_STATE_TEXT[s] ?? s.toLowerCase() };
 }
 
@@ -133,7 +135,7 @@ function relativeTime(iso: string): string {
   return `${Math.floor(s / 86400)}d ago`;
 }
 
-function Checks({ checks, colors, styles }: { checks: Check[]; colors: Colors; styles: Styles }) {
+function Checks({ checks, colors, styles, fix }: { checks: Check[]; colors: Colors; styles: Styles; fix?: ReactNode }) {
   const [expanded, setExpanded] = useState(false);
   const counts = { success: 0, failure: 0, pending: 0, other: 0 };
   for (const c of checks) {
@@ -158,6 +160,7 @@ function Checks({ checks, colors, styles }: { checks: Check[]; colors: Colors; s
   }
   return (
     <Section id="checks" title="Checks" styles={styles} right={<Text style={styles.muted}>{summary}</Text>}>
+      {counts.failure > 0 && fix}
       <View style={styles.card}>
         {visible.map((check, i) => {
           const v = checkVisual(check.status, colors);
@@ -247,7 +250,7 @@ function CommentCard({ comment, colors, styles }: { comment: PrComment; colors: 
   );
 }
 
-function PrView({ pr, directory, colors, styles }: { pr: PullRequest; directory: string; colors: Colors; styles: Styles }) {
+function PrView({ pr, directory, workspaceId, colors, styles }: { pr: PullRequest; directory: string; workspaceId: string; colors: Colors; styles: Styles }) {
   const state = stateBadge(pr, colors);
   const merge = mergeVisual(pr, colors);
   return (
@@ -269,7 +272,7 @@ function PrView({ pr, directory, colors, styles }: { pr: PullRequest; directory:
       <Section id="merge" title="Mergeability" styles={styles}>
         <View style={[styles.card, styles.cardBody, { borderColor: merge.color }]}>
           <View style={styles.row}>
-            <Icon name={merge.icon} size={14} color={merge.color} />
+            <Spinner name={merge.icon} size={14} color={merge.color} spinning={merge.icon === "LoaderCircle"} />
             <Text style={[styles.text, { color: merge.color, flex: 1 }]}>{merge.text}</Text>
           </View>
           {pr.reviewDecision && pr.state === "OPEN" && (
@@ -279,7 +282,12 @@ function PrView({ pr, directory, colors, styles }: { pr: PullRequest; directory:
         </View>
       </Section>
 
-      <Checks checks={pr.checks} colors={colors} styles={styles} />
+      <Checks
+        checks={pr.checks}
+        colors={colors}
+        styles={styles}
+        fix={pr.state === "OPEN" ? <FixChecksButton pr={pr} directory={directory} workspaceId={workspaceId} colors={colors} /> : undefined}
+      />
 
       <Section id="description" title="Description" styles={styles}>
         {pr.body.trim() ? (
@@ -341,7 +349,7 @@ export function PrPanel({ theme, layout, workspaceId, tab }: PluginWorkspacePane
             </Pressable>
           )}
           <Pressable accessibilityRole="button" accessibilityLabel="Refresh pull request" onPress={() => query.refetch()} style={styles.button}>
-            <Icon name="RefreshCw" size={12} color={colors.foreground} />
+            <Spinner name="RefreshCw" size={12} color={colors.foreground} spinning={query.isFetching} />
           </Pressable>
         </View>
       </View>
@@ -360,7 +368,7 @@ export function PrPanel({ theme, layout, workspaceId, tab }: PluginWorkspacePane
       ) : (
         <ScrollView contentContainerStyle={styles.content}>
           <SectionsContext.Provider value={sections}>
-            <PrView pr={pr} directory={directory} colors={colors} styles={styles} />
+            <PrView pr={pr} directory={directory} workspaceId={workspaceId} colors={colors} styles={styles} />
           </SectionsContext.Provider>
         </ScrollView>
       )}

@@ -1,28 +1,6 @@
-import { execFile } from "node:child_process";
 import type { RpcInput, RpcOutput } from "@getpaseo/plugin";
+import { run } from "./gh";
 import type { Check, MergeMethod, PrComment, getPrRpc, mergePrRpc } from "../shared/pr";
-
-// The daemon may not inherit the login shell PATH, so include common gh locations.
-const PATH = [process.env.PATH, "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"]
-  .filter(Boolean)
-  .join(":");
-
-function run(cmd: string, args: string[], cwd: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    execFile(
-      cmd,
-      args,
-      { cwd, env: { ...process.env, PATH, GH_PROMPT_DISABLED: "1", NO_COLOR: "1" }, maxBuffer: 20 * 1024 * 1024, timeout: 30_000 },
-      (error, stdout, stderr) => {
-        if (error) {
-          reject(new Error((stderr || error.message).trim()));
-          return;
-        }
-        resolve(stdout);
-      },
-    );
-  });
-}
 
 const PR_FIELDS = [
   "number", "title", "body", "url", "state", "isDraft", "author", "headRefName", "headRefOid", "baseRefName",
