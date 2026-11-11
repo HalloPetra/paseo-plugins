@@ -1,0 +1,9 @@
+{
+  "id": "granola",
+  "name": "Granola",
+  "description": "Pick Granola meeting transcripts from the composer and attach them as context",
+  "media": [],
+  "requirements": {
+    "paseo": ">=0.16.0-beta.1"
+  }
+}
