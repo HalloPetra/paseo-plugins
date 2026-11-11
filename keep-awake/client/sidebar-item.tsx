@@ -2,7 +2,7 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import type { PluginPopoverProps, PluginSidebarItemProps } from "@getpaseo/plugin/client";
 import { useRpc, useWorkspace } from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/ui";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { releaseNow, type Activity } from "../shared/keep-awake";
 import { ThemedSwitch } from "./switch";
@@ -17,6 +17,34 @@ import {
 
 /** Agents shown in the hover list before collapsing into "+N more". */
 const MAX_LISTED = 12;
+/** Grace before the hover card closes, so brief pointer slips across edges don't dismiss it. */
+const HOVER_CLOSE_DELAY_MS = 150;
+
+/**
+ * Hover state for the row and its card. Uses pointer enter/leave on a plain View rather than
+ * Pressable hover: on web, a Pressable ends its hover whenever the pointer moves onto a nested
+ * Pressable (the label, the "Now" link, the switch), which made the card flicker shut.
+ */
+function useHoverWithDelay() {
+  const [hovered, setHovered] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clear = () => {
+    if (timer.current !== null) clearTimeout(timer.current);
+    timer.current = null;
+  };
+  useEffect(() => clear, []);
+  return {
+    hovered,
+    onPointerEnter: () => {
+      clear();
+      setHovered(true);
+    },
+    onPointerLeave: () => {
+      clear();
+      timer.current = setTimeout(() => setHovered(false), HOVER_CLOSE_DELAY_MS);
+    },
+  };
+}
 
 function makeStyles(theme: PluginTheme) {
   return {
@@ -26,14 +54,17 @@ function makeStyles(theme: PluginTheme) {
     label: { flex: 1, color: theme.colors.foreground, fontSize: 14 },
     link: { color: theme.colors.foregroundMuted, fontSize: 11, textDecorationLine: "underline" as const },
     error: { paddingLeft: 26, color: theme.colors.statusDanger, fontSize: 11 },
-    // Opens upward: the row sits at the bottom of the sidebar.
-    hoverCard: {
+    // Opens upward: the row sits at the bottom of the sidebar. The bottom padding is the gap to the
+    // row; as padding rather than margin it stays inside the hover area while the pointer crosses.
+    hoverCardAnchor: {
       position: "absolute" as const,
       left: 4,
       right: 4,
       bottom: "100%" as const,
-      marginBottom: 4,
+      paddingBottom: 4,
       zIndex: 1000,
+    },
+    hoverCard: {
       padding: 8,
       gap: 6,
       borderRadius: 8,
@@ -154,7 +185,7 @@ function ActivityPopover({ theme }: PluginPopoverProps) {
 export function createSidebarItem(openSettings: () => void) {
   return function KeepAwakeItem({ theme, layout, openPopover }: PluginSidebarItemProps) {
     const styles = useMemo(() => makeStyles(theme), [theme]);
-    const [hovered, setHovered] = useState(false);
+    const { hovered, onPointerEnter, onPointerLeave } = useHoverWithDelay();
     const { status, releaseAt } = useStatus();
     const countdown = useCountdown(releaseAt);
     const { settings, update } = useKeepAwakeSettings();
@@ -165,18 +196,18 @@ export function createSidebarItem(openSettings: () => void) {
     const label = inGrace && countdown !== null ? `Sleep in ${formatCountdown(countdown)}` : summary(status, countdown);
 
     return (
-      <Pressable
-        // A non-pressable wrapper that only tracks hover, so the card stays open while the pointer
-        // moves from the row onto it.
-        accessible={false}
-        focusable={false}
-        onHoverIn={() => setHovered(true)}
-        onHoverOut={() => setHovered(false)}
+      <View
+        // Tracks hover for the row and the card together: the card is a child, so moving the pointer
+        // from the row onto it does not count as leaving.
+        onPointerEnter={onPointerEnter}
+        onPointerLeave={onPointerLeave}
         style={[styles.root, { zIndex: hovered ? 1000 : 0 }]}
       >
         {hovered && !layout.compact && activity.length > 0 ? (
-          <View style={styles.hoverCard}>
-            <ActivityList activity={activity} styles={styles} theme={theme} />
+          <View style={styles.hoverCardAnchor}>
+            <View style={styles.hoverCard}>
+              <ActivityList activity={activity} styles={styles} theme={theme} />
+            </View>
           </View>
         ) : null}
         <View style={styles.row}>
@@ -214,7 +245,7 @@ export function createSidebarItem(openSettings: () => void) {
             {status.error}
           </Text>
         ) : null}
-      </Pressable>
+      </View>
     );
   };
 }
