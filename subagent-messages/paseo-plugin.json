@@ -1,0 +1,9 @@
+{
+  "id": "subagent-messages",
+  "name": "Subagent messages",
+  "description": "Render subagent hand-back reports as collapsible cards instead of XML-framed user messages",
+  "media": [],
+  "requirements": {
+    "paseo": ">=0.16.0-beta.1"
+  }
+}
