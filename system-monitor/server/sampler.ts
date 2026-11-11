@@ -157,6 +157,10 @@ export class Sampler {
     this.running = false;
     this.generation += 1;
     this.listeners.clear();
+    // Drop history and deltas so a later subscriber does not see a gap stitched together.
+    this.history.length = 0;
+    this.prevCpu = null;
+    this.prevNet = null;
   }
 
   private async tick(generation: number): Promise<void> {
