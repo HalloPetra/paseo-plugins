@@ -6,7 +6,6 @@ import {
   agentsWithUnsettled,
   createThread,
   getThread,
-  repliedSince,
   type StoredMessage,
   type StoredThread,
   undeliveredFor,
@@ -109,7 +108,7 @@ export async function flush(paseo: PaseoApi, agentId: string): Promise<void> {
         threadId: message.threadId,
         from: message.fromLabel,
         fromAgentId: message.fromAgentId,
-        expectsReply: message.expectsReply,
+        expectsReply: message.expectsReply || message.reportBack,
         body: message.body,
       })),
     );
@@ -139,9 +138,11 @@ export async function flush(paseo: PaseoApi, agentId: string): Promise<void> {
 // ---------------------------------------------------------------------------
 // Questions waiting for an answer
 
-export type Answer =
-  | { kind: "reply"; body: string }
-  | { kind: "final"; body: string | null; outcome: string };
+/** The receiver's final message once the turn handling the question ends. */
+export interface Answer {
+  body: string | null;
+  outcome: string;
+}
 
 interface Waiter {
   questionId: string;
@@ -173,17 +174,6 @@ export function waitForAnswer(
       resolve: finish,
     });
   });
-}
-
-/**
- * Hands a reply to a waiting orchestrator_ask in the same thread. Returns false when no one is
- * waiting, in which case the reply goes out as an ordinary message.
- */
-export function answerWaiter(threadId: string, fromAgentId: string, body: string): boolean {
-  const waiter = waiters.get(threadId);
-  if (!waiter || waiter.recipientAgentId !== fromAgentId) return false;
-  waiter.resolve({ kind: "reply", body });
-  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -221,8 +211,8 @@ function describeOutcome(outcome: TurnOutcome): string {
 }
 
 /**
- * Runs when an agent's turn ends: answers pending orchestrator_ask calls that got no explicit
- * reply, sends requested reports back, then delivers anything that queued meanwhile.
+ * Runs when an agent's turn ends: answers pending orchestrator_ask calls with the agent's final
+ * message, sends requested reports back, then delivers anything that queued meanwhile.
  */
 export async function onTurnEnded(paseo: PaseoApi, agentId: string, outcome: TurnOutcome): Promise<void> {
   const unsettled = unsettledFor(agentId);
@@ -234,11 +224,10 @@ export async function onTurnEnded(paseo: PaseoApi, agentId: string, outcome: Tur
     };
     const reportsBySender = new Map<string, StoredMessage>();
     for (const message of unsettled) {
-      const answered = repliedSince(message.threadId, agentId, message.deliveredAt!);
       const waiter = waiters.get(message.threadId);
       if (waiter?.questionId === message.id) {
-        if (!answered) waiter.resolve({ kind: "final", body: await getFinal(), outcome: describeOutcome(outcome) });
-      } else if (message.reportBack && !answered && !reportsBySender.has(message.fromAgentId)) {
+        waiter.resolve({ body: await getFinal(), outcome: describeOutcome(outcome) });
+      } else if (message.reportBack && !reportsBySender.has(message.fromAgentId)) {
         reportsBySender.set(message.fromAgentId, message);
       }
     }

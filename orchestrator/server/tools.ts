@@ -1,6 +1,5 @@
 import type { PaseoApi } from "@getpaseo/client";
 import { defineAgentTool, type AgentToolContext, type AgentToolDefinition } from "@getpaseo/plugin/server";
-import { isAbsolute } from "node:path";
 import { z } from "zod";
 import { formatBatch } from "../shared/envelope";
 import {
@@ -11,15 +10,13 @@ import {
   primaryAgent,
   resolveTarget,
   type ResolvedTarget,
-  workspaceOf,
 } from "./directory";
-import { answerWaiter, finalMessage, onTurnEnded, rememberPaseo, sendMessage, waitForAnswer } from "./relay";
+import { finalMessage, rememberPaseo, sendMessage, waitForAnswer } from "./relay";
 import {
   addMessage,
   createThread,
   getThread,
   newId,
-  receivedBy,
   type StoredMessage,
   threadMessages,
   threadsFor,
@@ -41,7 +38,7 @@ function preview(body: string, max = 160): string {
 }
 
 function describeAgent(agent: DirectoryAgent, selfId: string): string {
-  const parts = [`${agent.id}`, agent.title ? `"${agent.title}"` : "(untitled)", agent.status];
+  const parts = [agent.id, agent.title ? `"${agent.title}"` : "(untitled)", agent.status];
   parts.push(agent.model ? `${agent.provider}/${agent.model}` : agent.provider);
   if (agent.pendingPermissions > 0) parts.push(`${agent.pendingPermissions} permission request(s) pending`);
   const queued = undeliveredFor(agent.id).length;
@@ -52,8 +49,10 @@ function describeAgent(agent: DirectoryAgent, selfId: string): string {
 
 async function setup(context: AgentToolContext): Promise<{ paseo: PaseoApi; directory: Directory; selfLabel: string }> {
   rememberPaseo(context.paseo);
-  const directory = await loadDirectory(context.paseo);
-  return { paseo: context.paseo, directory, selfLabel: agentLabel(directory, context.agent.id) };
+  const workspaceId = context.agent.workspaceId;
+  if (!workspaceId) throw new Error("The orchestrator tools only work inside a workspace.");
+  const directory = await loadDirectory(context.paseo, workspaceId);
+  return { paseo: context.paseo, directory, selfLabel: `Orchestrator (${directory.projectName})` };
 }
 
 function deliveryNote(message: StoredMessage): string {
@@ -68,58 +67,75 @@ const overview = defineAgentTool({
   name: "orchestrator_overview",
   title: "Orchestrator: overview",
   description:
-    "List every Paseo workspace on this host with its agents, their status, and which one is you. " +
-    "Use it to find who to message with orchestrator_send or orchestrator_ask. A workspace is addressed by its name or id; " +
-    "messages to a workspace go to its oldest live agent.",
+    "List the workspaces of your project with their agents and status. You are this project's orchestrator: " +
+    "use these tools to hand out work to the other workspaces, ask them questions, and collect results. " +
+    "A workspace is addressed by its name, id, or directory; messages go to its oldest live agent.",
   input: z.object({}),
   async execute(_input, context) {
     const { directory } = await setup(context);
     const self = context.agent.id;
-    const own = workspaceOf(directory, self);
+    const others = directory.workspaces.filter((workspace) => workspace.id !== directory.self.id);
     const lines = [
-      `You are ${agentLabel(directory, self)} (agent ${self}${own ? `, workspace ${own.id}` : ""}).`,
+      `Project ${directory.projectName} (${directory.projectRoot}). You are its orchestrator (agent ${self}).`,
       "",
-      `Workspaces (${directory.workspaces.length}):`,
+      `Other workspaces (${others.length}):`,
     ];
-    for (const workspace of directory.workspaces) {
+    for (const workspace of others) {
       const where = workspace.directory ? ` · ${workspace.directory}` : "";
-      lines.push(`- "${workspace.name}" · ${workspace.id} · project ${workspace.project} · ${workspace.status}${where}`);
+      lines.push(`- "${workspace.name}" · ${workspace.id} · ${workspace.status}${where}`);
       if (workspace.agents.length === 0) lines.push("    (no live agent)");
       for (const agent of workspace.agents) {
         const marker = agent.id === primaryAgent(workspace)?.id ? "*" : "-";
         lines.push(`    ${marker} ${describeAgent(agent, self)}`);
       }
     }
-    if (directory.looseAgents.length > 0) {
-      lines.push("", "Agents outside workspaces:");
-      for (const agent of directory.looseAgents) lines.push(`  - ${describeAgent(agent, self)}`);
-    }
+    if (others.length === 0) lines.push("(none yet; start one with orchestrator_spawn)");
     lines.push("", "* marks the agent that receives messages sent to the workspace.");
     return text(lines.join("\n"));
   },
 });
 
+function resolveRecipients(directory: Directory, self: string, to: string | string[] | undefined, threadId?: string) {
+  if (to === undefined) {
+    if (!threadId) throw new Error("Give `to`, or a thread_id to continue.");
+    const thread = getThread(threadId);
+    if (!thread || !thread.agents.includes(self)) throw new Error(`Thread ${threadId} is not one of yours.`);
+    const other = thread.agents.find((id) => id !== self)!;
+    return [{ agentId: other, label: agentLabel(directory, other) }];
+  }
+  const list = Array.isArray(to) ? to : [to];
+  if (list.length === 1 && list[0]!.trim().toLowerCase() === "all") {
+    const targets = directory.workspaces
+      .filter((workspace) => workspace.id !== directory.self.id)
+      .map(primaryAgent)
+      .filter((agent): agent is DirectoryAgent => agent !== undefined)
+      .map((agent) => ({ agentId: agent.id, label: agentLabel(directory, agent.id) }));
+    if (targets.length === 0) throw new Error("No other workspace in this project has a live agent.");
+    return targets;
+  }
+  const seen = new Set<string>();
+  return list
+    .map((entry) => resolveTarget(directory, entry))
+    .filter((target) => (seen.has(target.agentId) ? false : (seen.add(target.agentId), true)));
+}
+
 const send = defineAgentTool({
   name: "orchestrator_send",
   title: "Orchestrator: send a message",
   description:
-    "Send a message to another workspace or agent without waiting. The receiver gets it as a prompt right away " +
-    "when idle, otherwise as soon as its current turn ends. `to` takes workspace names or ids, agent ids, or \"all\" " +
-    "for every other workspace. Set report_back to get the receiver's final message sent back to you when it " +
-    "finishes handling yours: the way to hand out work and hear back. Pass thread_id to continue a conversation; " +
-    "`to` may then be left out.",
+    "Send a message to workspaces in your project without waiting. An idle receiver gets it as a prompt right " +
+    "away; a busy one as soon as its current turn ends. `to` takes workspace names, ids or directories, agent " +
+    'ids, a list of them, or "all". With report_back, the receiver\'s final message comes back to you as a new ' +
+    "prompt when it has handled yours: the way to hand out work and hear back. Pass thread_id to continue a " +
+    "conversation; `to` may then be left out.",
   input: z.object({
     to: z
       .union([z.string().min(1), z.array(z.string().min(1)).min(1)])
       .optional()
-      .describe('Workspace name or id, agent id, a list of them, or "all"'),
-    message: z.string().min(1).describe("Message text; Markdown is fine"),
+      .describe('Workspace name, id or directory, agent id, a list of them, or "all"'),
+    message: z.string().min(1).describe("Message text; Markdown is fine. The receiver starts with no other context"),
     thread_id: z.string().optional().describe("Continue this thread instead of starting a new one"),
-    report_back: z
-      .boolean()
-      .default(false)
-      .describe("Send you the receiver's final message once it has handled this"),
-    expects_reply: z.boolean().default(false).describe("Ask the receiver to answer with orchestrator_reply"),
+    report_back: z.boolean().default(false).describe("Send you the receiver's final message once it has handled this"),
   }),
   async execute(input, context) {
     const { paseo, directory, selfLabel } = await setup(context);
@@ -136,7 +152,7 @@ const send = defineAgentTool({
           kind: "message",
           body: input.message,
           threadId: input.thread_id,
-          expectsReply: input.expects_reply,
+          expectsReply: false,
           reportBack: input.report_back,
         });
         results.push(`- ${target.label}: thread ${message.threadId}, ${deliveryNote(message)}`);
@@ -151,46 +167,14 @@ const send = defineAgentTool({
   },
 });
 
-function resolveRecipients(
-  directory: Directory,
-  self: string,
-  to: string | string[] | undefined,
-  threadId: string | undefined,
-): ResolvedTarget[] {
-  if (to === undefined) {
-    if (!threadId) throw new Error("Give `to`, or a thread_id to continue.");
-    const thread = getThread(threadId);
-    if (!thread || !thread.agents.includes(self)) throw new Error(`Thread ${threadId} is not one of yours.`);
-    const other = thread.agents.find((id) => id !== self)!;
-    return [{ agentId: other, label: agentLabel(directory, other) }];
-  }
-  const list = Array.isArray(to) ? to : [to];
-  if (list.length === 1 && list[0]!.trim().toLowerCase() === "all") {
-    const own = workspaceOf(directory, self)?.id;
-    const targets = directory.workspaces
-      .filter((workspace) => workspace.id !== own)
-      .map(primaryAgent)
-      .filter((agent): agent is DirectoryAgent => agent !== undefined && agent.id !== self)
-      .map((agent) => ({ agentId: agent.id, label: agentLabel(directory, agent.id) }));
-    if (targets.length === 0) throw new Error("There is no other workspace with a live agent.");
-    return targets;
-  }
-  const seen = new Set<string>();
-  return list
-    .map((entry) => resolveTarget(directory, entry))
-    .filter((target) => (seen.has(target.agentId) ? false : (seen.add(target.agentId), true)));
-}
-
 const ask = defineAgentTool({
   name: "orchestrator_ask",
   title: "Orchestrator: ask and wait",
   description:
-    "Ask another workspace or agent a question and wait for the answer. The receiver answers with orchestrator_reply; " +
-    "if it finishes its turn without doing so, you get its final message instead. If the timeout passes, the " +
-    "thread stays open and a later answer arrives as a new prompt. Avoid asking an agent that is itself waiting " +
-    "on you: neither can answer until one times out.",
+    "Ask a workspace in your project a question and wait for the answer: the receiver's final message once it " +
+    "has handled the question. If the timeout passes, the answer arrives later as a new prompt.",
   input: z.object({
-    to: z.string().min(1).describe("Workspace name or id, or agent id"),
+    to: z.string().min(1).describe("Workspace name, id or directory, or agent id"),
     question: z.string().min(1),
     thread_id: z.string().optional().describe("Ask within an existing thread"),
     timeout_seconds: z.number().int().min(5).max(MAX_WAIT_SECONDS).default(300),
@@ -207,7 +191,8 @@ const ask = defineAgentTool({
       body: input.question,
       threadId: input.thread_id,
       expectsReply: true,
-      reportBack: false,
+      // If the wait times out, the answer still comes back as a report.
+      reportBack: true,
     });
     if (question.dropped) return { text: `Could not deliver: ${question.dropped}`, isError: true };
     const answer = await waitForAnswer(question, input.timeout_seconds * 1000, context.signal);
@@ -215,73 +200,19 @@ const ask = defineAgentTool({
     if (!answer) {
       return text(
         `${header} No answer within ${input.timeout_seconds}s (${deliveryNote(question)}). ` +
-          "The thread stays open; a later reply arrives as a new prompt, or check orchestrator_inbox.",
+          "The answer arrives as a new prompt when they finish.",
       );
     }
-    if (answer.kind === "reply") return text(`${header} Reply:\n\n${answer.body}`);
     return text(
-      `${header} They did not call orchestrator_reply; their turn ${answer.outcome}. ` +
-        (answer.body ? `Their final message:\n\n${answer.body}` : "They ended without a final message."),
+      `${header} Their turn ${answer.outcome}. ` + (answer.body ? `Answer:\n\n${answer.body}` : "They ended without a final message."),
     );
-  },
-});
-
-const reply = defineAgentTool({
-  name: "orchestrator_reply",
-  title: "Orchestrator: reply",
-  description:
-    "Answer a message you received through the orchestrator. Pass the thread id from the message. " +
-    "A sender waiting in orchestrator_ask gets the reply immediately; otherwise it arrives as a new prompt.",
-  input: z.object({
-    thread_id: z.string().min(1),
-    message: z.string().min(1),
-  }),
-  async execute(input, context) {
-    const { paseo, directory, selfLabel } = await setup(context);
-    const self = context.agent.id;
-    const thread = getThread(input.thread_id);
-    if (!thread || !thread.agents.includes(self)) {
-      return { text: `Thread ${input.thread_id} is not one of yours. Check orchestrator_inbox.`, isError: true };
-    }
-    const other = thread.agents.find((id) => id !== self)!;
-    const otherLabel = agentLabel(directory, other);
-    if (answerWaiter(thread.id, self, input.message)) {
-      const stored = addMessage({
-        threadId: thread.id,
-        kind: "reply",
-        fromAgentId: self,
-        fromLabel: selfLabel,
-        toAgentId: other,
-        toLabel: otherLabel,
-        body: input.message,
-        expectsReply: false,
-        reportBack: false,
-      });
-      const now = new Date().toISOString();
-      updateMessages([stored.id], { deliveredAt: now, settledAt: now });
-      return text(`Replied to ${otherLabel}; they were waiting and have it now.`);
-    }
-    const message = await sendMessage(paseo, {
-      fromAgentId: self,
-      fromLabel: selfLabel,
-      toAgentId: other,
-      toLabel: otherLabel,
-      kind: "reply",
-      body: input.message,
-      threadId: thread.id,
-      expectsReply: false,
-      reportBack: false,
-    });
-    return text(`Replied to ${otherLabel}: ${deliveryNote(message)}.`);
   },
 });
 
 const inbox = defineAgentTool({
   name: "orchestrator_inbox",
-  title: "Orchestrator: inbox",
-  description:
-    "List your orchestrator conversations, newest first, or read one thread in full with thread_id. " +
-    "Every message you received was also delivered to you as a prompt.",
+  title: "Orchestrator: conversations",
+  description: "List your conversations with the project's workspaces, newest first, or read one thread in full with thread_id.",
   input: z.object({
     thread_id: z.string().optional(),
     limit: z.number().int().min(1).max(100).default(20),
@@ -294,68 +225,23 @@ const inbox = defineAgentTool({
       if (!thread || !thread.agents.includes(self)) {
         return { text: `Thread ${input.thread_id} is not one of yours.`, isError: true };
       }
-      const messages = threadMessages(thread.id).slice(-input.limit);
-      const lines = messages.map((message) => {
-        const who = message.fromAgentId === self ? "you" : message.fromLabel;
-        return `[${message.createdAt}] ${who} (${message.kind}, ${deliveryNote(message)}):\n${message.body}`;
-      });
+      const lines = threadMessages(thread.id)
+        .slice(-input.limit)
+        .map((message) => {
+          const who = message.fromAgentId === self ? "you" : message.fromLabel;
+          return `[${message.createdAt}] ${who} (${message.kind}, ${deliveryNote(message)}):\n${message.body}`;
+        });
       return text(`Thread ${thread.id}, ${thread.hops} message(s):\n\n${lines.join("\n\n")}`);
     }
     const threads = threadsFor(self).slice(0, input.limit);
-    if (threads.length === 0) {
-      const received = receivedBy(self, 1).length;
-      return text(received ? "No open threads." : "No orchestrator messages yet.");
-    }
+    if (threads.length === 0) return text("No conversations yet.");
     const lines = threads.map((thread) => {
       const other = thread.agents.find((id) => id !== self)!;
       const last = threadMessages(thread.id).at(-1);
-      const awaiting = last && last.toAgentId === self && last.expectsReply ? " · waiting for your reply" : "";
-      const lastLine = last
-        ? `${last.fromAgentId === self ? "you" : last.fromLabel}: ${preview(last.body)}`
-        : "(empty)";
-      return `- ${thread.id} with ${agentLabel(directory, other)} · ${thread.hops} message(s)${awaiting}\n    ${lastLine}`;
+      const lastLine = last ? `${last.fromAgentId === self ? "you" : last.fromLabel}: ${preview(last.body)}` : "(empty)";
+      return `- ${thread.id} with ${agentLabel(directory, other)} · ${thread.hops} message(s)\n    ${lastLine}`;
     });
     return text(lines.join("\n"));
-  },
-});
-
-const wait = defineAgentTool({
-  name: "orchestrator_wait",
-  title: "Orchestrator: wait for workspaces",
-  description:
-    "Wait until the given workspaces or agents stop working (idle, failed, or waiting on a permission request), " +
-    "then return each one's status and final message. mode \"any\" returns as soon as one stops. Use it to " +
-    "collect results after handing out work, instead of polling.",
-  input: z.object({
-    targets: z.array(z.string().min(1)).min(1).describe("Workspace names or ids, or agent ids"),
-    mode: z.enum(["all", "any"]).default("all"),
-    timeout_seconds: z.number().int().min(5).max(MAX_WAIT_SECONDS).default(300),
-  }),
-  async execute(input, context) {
-    const { paseo, directory } = await setup(context);
-    const targets = input.targets.map((target) => resolveTarget(directory, target));
-    if (targets.some((target) => target.agentId === context.agent.id)) {
-      return { text: "You cannot wait for yourself.", isError: true };
-    }
-    const deadline = Date.now() + input.timeout_seconds * 1000;
-    let states = await readStates(paseo, targets);
-    while (!context.signal.aborted && Date.now() < deadline) {
-      const stopped = states.filter((state) => state.stopped).length;
-      if (input.mode === "any" ? stopped > 0 : stopped === states.length) break;
-      await sleep(POLL_MS, context.signal);
-      states = await readStates(paseo, targets);
-    }
-    const lines: string[] = [];
-    for (const state of states) {
-      lines.push(`## ${state.target.label} (${state.target.agentId}): ${state.description}`);
-      if (state.stopped) {
-        const final = await finalMessage(paseo, state.target.agentId).catch(() => null);
-        lines.push(final ?? "(no final message)");
-      }
-      lines.push("");
-    }
-    const timedOut = states.some((state) => !state.stopped) && input.mode === "all";
-    return text(`${timedOut ? `Timed out after ${input.timeout_seconds}s.\n\n` : ""}${lines.join("\n")}`.trim());
   },
 });
 
@@ -371,7 +257,6 @@ async function readStates(paseo: PaseoApi, targets: ResolvedTarget[]): Promise<T
       const snapshot = await paseo.agents.ref(target.agentId).refresh().catch(() => null);
       if (!snapshot) return { target, stopped: true, description: "no longer exists" };
       const agent = snapshot.agent;
-      const queued = undeliveredFor(target.agentId).length;
       if (agent.pendingPermissions.length > 0) {
         return { target, stopped: true, description: "waiting for a permission decision" };
       }
@@ -379,6 +264,7 @@ async function readStates(paseo: PaseoApi, targets: ResolvedTarget[]): Promise<T
         return { target, stopped: false, description: agent.status };
       }
       // Messages still queued for it mean it is about to start another turn.
+      const queued = undeliveredFor(target.agentId).length;
       if (queued > 0) return { target, stopped: false, description: `${agent.status}, ${queued} message(s) queued` };
       const error = agent.lastError && agent.status === "error" ? ` (${agent.lastError})` : "";
       return { target, stopped: true, description: `${agent.status}${error}` };
@@ -398,21 +284,55 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
+const wait = defineAgentTool({
+  name: "orchestrator_wait",
+  title: "Orchestrator: wait for workspaces",
+  description:
+    "Wait until the given workspaces stop working (idle, failed, or waiting on a permission request), then " +
+    'return each one\'s status and final message. mode "any" returns as soon as one stops. Use it to collect ' +
+    "results after handing out work, instead of polling.",
+  input: z.object({
+    targets: z.array(z.string().min(1)).min(1).describe("Workspace names, ids or directories, or agent ids"),
+    mode: z.enum(["all", "any"]).default("all"),
+    timeout_seconds: z.number().int().min(5).max(MAX_WAIT_SECONDS).default(300),
+  }),
+  async execute(input, context) {
+    const { paseo, directory } = await setup(context);
+    const targets = input.targets.map((target) => resolveTarget(directory, target));
+    const deadline = Date.now() + input.timeout_seconds * 1000;
+    let states = await readStates(paseo, targets);
+    while (!context.signal.aborted && Date.now() < deadline) {
+      const stopped = states.filter((state) => state.stopped).length;
+      if (input.mode === "any" ? stopped > 0 : stopped === states.length) break;
+      await sleep(POLL_MS, context.signal);
+      states = await readStates(paseo, targets);
+    }
+    const lines: string[] = [];
+    for (const state of states) {
+      lines.push(`## ${state.target.label} (${state.target.agentId}): ${state.description}`);
+      if (state.stopped) lines.push((await finalMessage(paseo, state.target.agentId).catch(() => null)) ?? "(no final message)");
+      lines.push("");
+    }
+    const timedOut = input.mode === "all" && states.some((state) => !state.stopped);
+    return text(`${timedOut ? `Timed out after ${input.timeout_seconds}s.\n\n` : ""}${lines.join("\n")}`.trim());
+  },
+});
+
 const read = defineAgentTool({
   name: "orchestrator_read",
   title: "Orchestrator: read a workspace",
   description:
-    "Read the recent conversation of another workspace or agent: its prompts, replies, and tool calls. " +
+    "Read the recent conversation of a workspace in your project: its prompts, replies, and tool calls. " +
     "Use it to check what a workspace is doing before directing it.",
   input: z.object({
-    target: z.string().min(1).describe("Workspace name or id, or agent id"),
+    target: z.string().min(1).describe("Workspace name, id or directory, or agent id"),
     limit: z.number().int().min(1).max(100).default(25).describe("Timeline entries to read, newest last"),
   }),
   async execute(input, context) {
     const { paseo, directory } = await setup(context);
     const target = resolveTarget(directory, input.target);
     const page = await paseo.agents.ref(target.agentId).timeline.refetch({ direction: "tail", limit: input.limit });
-    const status = page.agent ? `${page.agent.status}` : "unknown status";
+    const status = page.agent ? page.agent.status : "unknown status";
     const lines = page.entries.flatMap((entry) => {
       const item = entry.item;
       switch (item.type) {
@@ -438,12 +358,10 @@ const spawn = defineAgentTool({
   name: "orchestrator_spawn",
   title: "Orchestrator: start a workspace",
   description:
-    "Create a new workspace with an agent working on a task. By default it gets its own git worktree on a new " +
-    "branch of the project, so several workspaces can work in parallel without touching each other's files. " +
-    "With report_back (on by default) the agent's final message comes back to you when it finishes. " +
-    "`project` is an existing workspace's name or id, or an absolute path to a repository.",
+    "Start a new workspace in your project with an agent working on a task. By default it gets its own git " +
+    "worktree on a new branch, so several workspaces can work in parallel without touching each other's files. " +
+    "With report_back (on by default) the agent's final message comes back to you when it finishes.",
   input: z.object({
-    project: z.string().min(1).describe("Workspace name or id whose project to use, or an absolute path"),
     task: z.string().min(1).describe("Instructions for the new agent; be complete, it starts with no context"),
     title: z.string().optional().describe("Workspace title"),
     branch: z.string().optional().describe("Name for the new branch when isolation is worktree"),
@@ -461,22 +379,6 @@ const spawn = defineAgentTool({
     const { paseo, directory, selfLabel } = await setup(context);
     const self = context.agent.id;
 
-    let cwd: string;
-    let projectId: string | undefined;
-    if (isAbsolute(input.project)) {
-      cwd = input.project;
-    } else {
-      const query = input.project.trim().toLowerCase();
-      const workspace = directory.workspaces.find(
-        (candidate) => candidate.id === input.project || candidate.name.toLowerCase() === query,
-      );
-      if (!workspace?.directory) {
-        return { text: `No workspace "${input.project}" with a directory. Use orchestrator_overview or an absolute path.`, isError: true };
-      }
-      cwd = workspace.directory;
-      projectId = workspace.projectId;
-    }
-
     let provider = input.provider;
     if (!provider) {
       const mine = (await paseo.agents.ref(self).refresh())?.agent;
@@ -492,24 +394,17 @@ const spawn = defineAgentTool({
         input.isolation === "worktree"
           ? {
               kind: "worktree",
-              cwd,
-              ...(projectId ? { projectId } : {}),
+              cwd: directory.projectRoot,
+              projectId: directory.projectId,
               action: "branch-off",
               ...(input.branch ? { branchName: input.branch } : {}),
             }
-          : { kind: "directory", path: cwd, ...(projectId ? { projectId } : {}) },
+          : { kind: "directory", path: directory.projectRoot, projectId: directory.projectId },
     });
 
     const threadId = newId("t");
     const prompt = formatBatch([
-      {
-        kind: "task",
-        threadId,
-        from: selfLabel,
-        fromAgentId: self,
-        expectsReply: false,
-        body: input.task,
-      },
+      { kind: "task", threadId, from: selfLabel, fromAgentId: self, expectsReply: input.report_back, body: input.task },
     ]);
     const agent = await created.agents.create({
       config: { provider },
@@ -534,16 +429,10 @@ const spawn = defineAgentTool({
 
     return text(
       `Started workspace "${created.name ?? input.title ?? created.id}" (${created.id}) with agent ${agent.id} ` +
-        `(${provider}) in ${created.directory ?? cwd}. Thread ${threadId}.` +
+        `(${provider}) in ${created.directory ?? directory.projectRoot}. Thread ${threadId}.` +
         (input.report_back ? " Its final message comes back to you when it finishes." : ""),
     );
   },
 });
 
-export const orchestratorTools: AgentToolDefinition[] = [overview, send, ask, reply, inbox, wait, read, spawn];
-
-/** Turn-end hook entry: answers, reports, and queued deliveries for the agent. */
-export function handleTurnEnded(paseo: PaseoApi, agentId: string, outcome: Parameters<typeof onTurnEnded>[2]) {
-  rememberPaseo(paseo);
-  return onTurnEnded(paseo, agentId, outcome);
-}
+export const orchestratorTools: AgentToolDefinition[] = [overview, send, ask, inbox, wait, read, spawn];

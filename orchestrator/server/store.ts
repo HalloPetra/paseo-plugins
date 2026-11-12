@@ -186,13 +186,6 @@ export function threadsFor(agentId: string): StoredThread[] {
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-/** Whether `fromAgentId` posted to the thread after `since`. */
-export function repliedSince(threadId: string, fromAgentId: string, since: string): boolean {
-  return data.messages.some(
-    (message) => message.threadId === threadId && message.fromAgentId === fromAgentId && message.createdAt >= since,
-  );
-}
-
 export function receivedBy(agentId: string, limit: number): StoredMessage[] {
   return data.messages.filter((message) => message.toAgentId === agentId).slice(-limit);
 }
