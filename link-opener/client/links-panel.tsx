@@ -70,7 +70,7 @@ export function LinksPanel({ workspaceId, navigation, revision, theme, layout }:
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Text style={styles.title}>Links</Text>
       <Text style={styles.hint}>
-        Click a link in an agent chat to choose where it opens. ⌘-click opens it in the system
+        Click a link in an agent chat or a GitHub PR comment to choose where it opens. ⌘-click opens it in the system
         browser directly.
       </Text>
       {error ? <Text style={styles.error}>{error}</Text> : null}

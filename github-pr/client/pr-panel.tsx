@@ -202,6 +202,9 @@ function Checks({ checks, colors, styles, fix }: { checks: Check[]; colors: Colo
   );
 }
 
+// Lets the Link opener plugin show its open-in popover for links in rendered Markdown.
+const LINK_SCOPE = "link-opener-scope";
+
 const BOT_AUTHOR = /\[bot\]$|^(vercel|linear|github-actions|codecov|changeset-bot|dependabot|renovate|netlify|coderabbitai|sonarcloud)$/i;
 
 function preview(body: string): string {
@@ -244,7 +247,7 @@ function CommentCard({ comment, colors, styles }: { comment: PrComment; colors: 
           </Text>
         )}
         {expanded
-          ? body !== "" && <Markdown>{body}</Markdown>
+          ? body !== "" && <View testID={LINK_SCOPE}><Markdown>{body}</Markdown></View>
           : body !== "" && <Text style={styles.muted} numberOfLines={1}>{preview(comment.body)}</Text>}
       </View>
     </View>
@@ -296,7 +299,7 @@ function PrView({ pr, directory, workspaceId, colors, styles }: { pr: PullReques
 
       <Section id="description" title="Description" styles={styles}>
         {pr.body.trim() ? (
-          <View style={[styles.card, styles.cardBody]}><Markdown>{sanitizeMarkdown(pr.body)}</Markdown></View>
+          <View testID={LINK_SCOPE} style={[styles.card, styles.cardBody]}><Markdown>{sanitizeMarkdown(pr.body)}</Markdown></View>
         ) : (
           <Text style={styles.muted}>No description provided.</Text>
         )}
