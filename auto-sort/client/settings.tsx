@@ -125,6 +125,13 @@ export function AutoSortSettings(props: PluginSurfaceProps) {
             onValueChange={(delayMinutes) => set({ delayMinutes: delayMinutes as Rules["delayMinutes"] })}
           />
           <SettingsSwitch
+            label="Skip pinned workspaces"
+            hint="Pinned workspaces are never archived, even when their pull request is merged or closed."
+            value={values.skipPinned}
+            disabled={settings.saving}
+            onValueChange={(skipPinned) => set({ skipPinned })}
+          />
+          <SettingsSwitch
             label="Keep workspaces with unsaved work"
             hint="Archiving removes the worktree. Skip it when there are uncommitted changes or commits on no remote."
             error={settings.saveError ? String(settings.saveError) : null}

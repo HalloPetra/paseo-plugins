@@ -21,6 +21,8 @@ export const rulesSettings = defineSettings({
     delayMinutes: z.enum(["0", "5", "30", "240"]).default("5"),
     /** Leave workspaces with uncommitted or unpushed changes alone; archiving removes the worktree. */
     keepUnsavedWork: z.boolean().default(true),
+    /** Leave pinned workspaces alone, whatever their pull request state. */
+    skipPinned: z.boolean().default(true),
   }),
 });
 

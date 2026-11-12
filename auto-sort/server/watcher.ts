@@ -27,7 +27,8 @@ function git(args: string[], cwd: string): Promise<string> {
 
 /** Why a workspace should be archived under the current rules, or null to leave it. */
 function verdict(workspace: PaseoWorkspace, rules: Rules): Reason | null {
-  if (workspace.archivingAt || workspace.internal || workspace.background || workspace.pinnedAt) return null;
+  if (workspace.archivingAt || workspace.internal || workspace.background) return null;
+  if (rules.skipPinned && workspace.pinnedAt) return null;
   // Only Paseo-made worktrees; archiving a directory or the main checkout is never what the user meant.
   if (workspace.workspaceKind !== "worktree" && workspace.workspaceKind !== "checkout") return null;
   // An agent is still busy or waiting on the user; re-evaluated when the status changes.
