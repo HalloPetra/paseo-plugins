@@ -2,11 +2,13 @@ import { type PluginNewWorkspaceItemProps, useNewWorkspace, useRpc } from "@getp
 import { Icon } from "@getpaseo/plugin/client/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { Pressable, Text } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { ORCHESTRATOR_ROLE, ROLE_KEY, isOrchestratorMetadata, projectOrchestratorRpc } from "../shared/orchestrator";
 
 const ICON = "Network";
+const TOOLTIP = "Toggle orchestrator";
 const SIZE = 28;
+const TOOLTIP_BOX_WIDTH = 320;
 /**
  * The on state uses the same blue as Paseo's own active composer toggles. The theme has no blue
  * token (its accent is not blue in every theme), so it is fixed; it reads on light and dark.
@@ -19,6 +21,10 @@ const ACTIVE_BLUE_BACKGROUND = "rgba(59, 130, 246, 0.15)";
  * orchestrator: it works in the project directory, gets the orchestrator tools, and is pinned.
  * A project has at most one, so the toggle is hidden once it has. On a phone it draws as a
  * full-width row with a label.
+ *
+ * On desktop it is icon-only with a hover tooltip, like Paseo's composer toggles (Fast mode). A
+ * plugin `Toggle` would draw as a labelled badge on this screen, and the plugin UI kit has no
+ * tooltip, so both are drawn here.
  */
 export function OrchestratorToggle({ theme, layout }: PluginNewWorkspaceItemProps) {
   const newWorkspace = useNewWorkspace();
@@ -50,6 +56,25 @@ export function OrchestratorToggle({ theme, layout }: PluginNewWorkspaceItemProp
         alignSelf: layout.compact ? ("stretch" as const) : ("flex-start" as const),
       },
       label: { color: on ? ACTIVE_BLUE : theme.colors.foregroundMuted, fontSize: 14, flexShrink: 1 },
+      anchor: { position: "relative" as const, zIndex: 10 },
+      // A wide, invisible box centred on the button, so the bubble sizes to its text instead of to
+      // the 28px button and sits centred above it without measuring.
+      tooltipBox: {
+        position: "absolute" as const,
+        bottom: SIZE + 6,
+        left: (SIZE - TOOLTIP_BOX_WIDTH) / 2,
+        width: TOOLTIP_BOX_WIDTH,
+        alignItems: "center" as const,
+      },
+      tooltip: {
+        paddingVertical: 4,
+        paddingHorizontal: 8,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+        backgroundColor: theme.colors.surface2,
+      },
+      tooltipText: { color: theme.colors.foreground, fontSize: 13 },
     }),
     [theme, layout.compact, on, hovered, busy],
   );
@@ -72,7 +97,7 @@ export function OrchestratorToggle({ theme, layout }: PluginNewWorkspaceItemProp
 
   const iconColor = on ? ACTIVE_BLUE : active ? theme.colors.foreground : theme.colors.foregroundMuted;
 
-  return (
+  const button = (
     <Pressable
       accessibilityRole="switch"
       accessibilityLabel="Orchestrator"
@@ -90,5 +115,21 @@ export function OrchestratorToggle({ theme, layout }: PluginNewWorkspaceItemProp
         </Text>
       ) : null}
     </Pressable>
+  );
+
+  if (layout.compact) return button;
+  return (
+    <View style={styles.anchor}>
+      {button}
+      {hovered ? (
+        <View style={styles.tooltipBox} pointerEvents="none">
+          <View style={styles.tooltip}>
+            <Text style={styles.tooltipText} numberOfLines={1}>
+              {TOOLTIP}
+            </Text>
+          </View>
+        </View>
+      ) : null}
+    </View>
   );
 }
