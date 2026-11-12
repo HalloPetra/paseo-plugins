@@ -1,5 +1,6 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { OrchestratorMessageCard, messageSchema } from "./client/message-card";
+import { OrchestratorToggle } from "./client/orchestrator-toggle";
 import { parseBatch } from "./shared/envelope";
 
 export default function contribute(client: PluginClientContext) {
@@ -33,8 +34,10 @@ export default function contribute(client: PluginClientContext) {
     schema: messageSchema,
     Component: OrchestratorMessageCard,
   });
+  const removeToggle = client.addNewWorkspaceItem({ id: "orchestrator", Component: OrchestratorToggle });
   return () => {
     removeTransformer();
     removeRenderer();
+    removeToggle();
   };
 }

@@ -1,4 +1,5 @@
 import type { PaseoAgent, PaseoApi, PaseoWorkspace } from "@getpaseo/client";
+import { isOrchestratorMetadata } from "../shared/orchestrator";
 
 export interface DirectoryAgent {
   id: string;
@@ -6,31 +7,32 @@ export interface DirectoryAgent {
   status: PaseoAgent["status"];
   provider: string;
   model: string | null;
-  workspaceId: string | null;
+  workspaceId: string;
   createdAt: string;
-  lastActivityAt: string;
   pendingPermissions: number;
 }
 
 export interface DirectoryWorkspace {
   id: string;
   name: string;
-  projectId: string;
-  project: string;
   directory: string | null;
-  kind: PaseoWorkspace["workspaceKind"];
   status: PaseoWorkspace["status"];
+  orchestrator: boolean;
   agents: DirectoryAgent[];
 }
 
+/** The workspaces of one project, as seen from the agent calling a tool. */
 export interface Directory {
+  projectId: string;
+  projectName: string;
+  projectRoot: string;
+  /** The caller's own workspace. */
+  self: DirectoryWorkspace;
   workspaces: DirectoryWorkspace[];
-  /** Agents outside any workspace. */
-  looseAgents: DirectoryAgent[];
   agentsById: Map<string, DirectoryAgent>;
 }
 
-async function listAllWorkspaces(paseo: PaseoApi): Promise<PaseoWorkspace[]> {
+export async function listAllWorkspaces(paseo: PaseoApi): Promise<PaseoWorkspace[]> {
   const all: PaseoWorkspace[] = [];
   let cursor: string | undefined;
   do {
@@ -52,48 +54,54 @@ async function listAllAgents(paseo: PaseoApi): Promise<PaseoAgent[]> {
   return all;
 }
 
-function toAgent(agent: PaseoAgent): DirectoryAgent {
-  return {
-    id: agent.id,
-    title: agent.title,
-    status: agent.status,
-    provider: agent.provider,
-    model: agent.model,
-    workspaceId: agent.workspaceId ?? null,
-    createdAt: agent.createdAt,
-    lastActivityAt: agent.lastUserMessageAt ?? agent.updatedAt,
-    pendingPermissions: agent.pendingPermissions.length,
-  };
-}
+/** Loads the project that `workspaceId` belongs to. */
+export async function loadDirectory(paseo: PaseoApi, workspaceId: string): Promise<Directory> {
+  const [allWorkspaces, allAgents] = await Promise.all([listAllWorkspaces(paseo), listAllAgents(paseo)]);
+  const own = allWorkspaces.find((workspace) => workspace.id === workspaceId);
+  if (!own) throw new Error("Your workspace was not found.");
 
-export async function loadDirectory(paseo: PaseoApi): Promise<Directory> {
-  const [workspaces, agents] = await Promise.all([listAllWorkspaces(paseo), listAllAgents(paseo)]);
-  const live = agents.filter((agent) => !agent.archivedAt && !agent.background && !agent.internal);
-  const agentsById = new Map(live.map((agent) => [agent.id, toAgent(agent)]));
-  const byWorkspace = new Map<string, DirectoryAgent[]>();
-  const looseAgents: DirectoryAgent[] = [];
-  for (const agent of agentsById.values()) {
-    if (!agent.workspaceId) {
-      looseAgents.push(agent);
-      continue;
-    }
-    const list = byWorkspace.get(agent.workspaceId) ?? [];
-    list.push(agent);
-    byWorkspace.set(agent.workspaceId, list);
+  const projectWorkspaces = allWorkspaces.filter(
+    (workspace) =>
+      workspace.projectId === own.projectId &&
+      (workspace.id === own.id || (!workspace.archivingAt && !workspace.background && !workspace.internal)),
+  );
+  const inProject = new Set(projectWorkspaces.map((workspace) => workspace.id));
+
+  const agentsById = new Map<string, DirectoryAgent>();
+  for (const agent of allAgents) {
+    if (agent.archivedAt || agent.background || agent.internal) continue;
+    if (!agent.workspaceId || !inProject.has(agent.workspaceId)) continue;
+    agentsById.set(agent.id, {
+      id: agent.id,
+      title: agent.title,
+      status: agent.status,
+      provider: agent.provider,
+      model: agent.model,
+      workspaceId: agent.workspaceId,
+      createdAt: agent.createdAt,
+      pendingPermissions: agent.pendingPermissions.length,
+    });
   }
-  const result: DirectoryWorkspace[] = workspaces
-    .filter((workspace) => !workspace.archivingAt && !workspace.background && !workspace.internal)
-    .map((workspace) => ({
-      id: workspace.id,
-      name: workspace.name,
-      projectId: workspace.projectId,
-      project: workspace.projectDisplayName,
-      directory: workspace.workspaceDirectory ?? null,
-      kind: workspace.workspaceKind,
-      status: workspace.status,
-      agents: (byWorkspace.get(workspace.id) ?? []).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
-    }));
-  return { workspaces: result, looseAgents, agentsById };
+
+  const workspaces = projectWorkspaces.map((workspace) => ({
+    id: workspace.id,
+    name: workspace.name,
+    directory: workspace.workspaceDirectory ?? null,
+    status: workspace.status,
+    orchestrator: isOrchestratorMetadata(workspace.metadata),
+    agents: [...agentsById.values()]
+      .filter((agent) => agent.workspaceId === workspace.id)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+  }));
+
+  return {
+    projectId: own.projectId,
+    projectName: own.projectDisplayName,
+    projectRoot: own.projectRootPath,
+    self: workspaces.find((workspace) => workspace.id === own.id)!,
+    workspaces,
+    agentsById,
+  };
 }
 
 /** The agent that speaks for a workspace: its oldest live agent, usually the one it was created with. */
@@ -103,10 +111,10 @@ export function primaryAgent(workspace: DirectoryWorkspace): DirectoryAgent | un
 
 export function workspaceOf(directory: Directory, agentId: string): DirectoryWorkspace | undefined {
   const workspaceId = directory.agentsById.get(agentId)?.workspaceId;
-  return workspaceId ? directory.workspaces.find((workspace) => workspace.id === workspaceId) : undefined;
+  return directory.workspaces.find((workspace) => workspace.id === workspaceId);
 }
 
-/** "Workspace name / agent title", for envelopes and listings. */
+/** "Workspace name", or "Workspace name / agent title" when the workspace has several agents. */
 export function agentLabel(directory: Directory, agentId: string): string {
   const agent = directory.agentsById.get(agentId);
   const workspace = workspaceOf(directory, agentId);
@@ -121,29 +129,32 @@ export interface ResolvedTarget {
 }
 
 /**
- * Resolves a target: an agent id, a workspace id, an exact workspace name, or a unique
- * part of one. Throws with the candidates when it is ambiguous or unknown.
+ * Resolves a target inside the project: an agent id, a workspace id, an exact workspace name,
+ * or a unique part of a name or directory. Throws with the candidates when it is ambiguous.
  */
 export function resolveTarget(directory: Directory, target: string): ResolvedTarget {
   const query = target.trim();
   const lower = query.toLowerCase();
 
-  const agent = directory.agentsById.get(query) ?? [...directory.agentsById.values()].find(
-    (candidate) => query.length >= 6 && candidate.id.startsWith(query),
-  );
+  const agent =
+    directory.agentsById.get(query) ??
+    [...directory.agentsById.values()].find((candidate) => query.length >= 6 && candidate.id.startsWith(query));
   if (agent) return { agentId: agent.id, label: agentLabel(directory, agent.id) };
 
-  const exact = directory.workspaces.filter(
-    (workspace) => workspace.id === query || workspace.name.toLowerCase() === lower,
-  );
-  const matches = exact.length > 0
-    ? exact
-    : directory.workspaces.filter(
-        (workspace) => workspace.name.toLowerCase().includes(lower) || workspace.directory?.toLowerCase().endsWith(lower),
-      );
+  const candidates = directory.workspaces.filter((workspace) => workspace.id !== directory.self.id);
+  const exact = candidates.filter((workspace) => workspace.id === query || workspace.name.toLowerCase() === lower);
+  const matches =
+    exact.length > 0
+      ? exact
+      : candidates.filter(
+          (workspace) =>
+            workspace.name.toLowerCase().includes(lower) || workspace.directory?.toLowerCase().endsWith(lower),
+        );
 
   if (matches.length === 0) {
-    throw new Error(`No workspace or agent matches "${target}". Call orchestrator_overview to list them.`);
+    throw new Error(
+      `No workspace or agent in project ${directory.projectName} matches "${target}". Call orchestrator_overview to list them.`,
+    );
   }
   if (matches.length > 1) {
     const names = matches.map((workspace) => `"${workspace.name}" (${workspace.id})`).join(", ");
@@ -152,9 +163,7 @@ export function resolveTarget(directory: Directory, target: string): ResolvedTar
   const workspace = matches[0]!;
   const primary = primaryAgent(workspace);
   if (!primary) {
-    throw new Error(
-      `Workspace "${workspace.name}" has no running agent to receive messages. Start one with orchestrator_spawn or in Paseo.`,
-    );
+    throw new Error(`Workspace "${workspace.name}" has no live agent. Start one with orchestrator_spawn or in Paseo.`);
   }
   return { agentId: primary.id, label: agentLabel(directory, primary.id) };
 }

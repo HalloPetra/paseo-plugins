@@ -11,16 +11,17 @@ export interface Envelope {
   threadId: string;
   from: string;
   fromAgentId: string;
-  /** Whether the sender is waiting for an answer through orchestrator_reply. */
+  /** Whether the sender gets the receiver's final message back as the answer. */
   expectsReply: boolean;
   body: string;
 }
 
 const TAG = "orchestrator-message";
 
-export const ENVELOPE_FOOTER =
-  "(Delivered by the Paseo orchestrator. Answer with orchestrator_reply using the thread id when a reply is expected; " +
-  "use orchestrator_send to start a new conversation and orchestrator_overview to see every workspace.)";
+/** Every footer starts with this, so the client can recognize and strip any version of it. */
+const FOOTER_PREFIX = "(Delivered by the Paseo orchestrator.";
+const FOOTER_ANSWER = `${FOOTER_PREFIX} When you finish, your final message is passed back to the sender as your answer.)`;
+const FOOTER_NO_ANSWER = `${FOOTER_PREFIX} No answer is needed.)`;
 
 function escapeAttribute(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/\n/g, " ");
@@ -52,7 +53,8 @@ export function formatEnvelope(envelope: Envelope): string {
 
 /** One prompt carrying every envelope waiting for an agent. */
 export function formatBatch(envelopes: Envelope[]): string {
-  return `${envelopes.map(formatEnvelope).join("\n\n")}\n\n${ENVELOPE_FOOTER}`;
+  const footer = envelopes.some((envelope) => envelope.expectsReply) ? FOOTER_ANSWER : FOOTER_NO_ANSWER;
+  return `${envelopes.map(formatEnvelope).join("\n\n")}\n\n${footer}`;
 }
 
 const BLOCK = new RegExp(`<${TAG}((?:\\s+[a-z-]+="[^"]*")*)\\s*>\\n?([\\s\\S]*?)\\n?</${TAG}>`, "g");
