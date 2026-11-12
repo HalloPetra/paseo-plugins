@@ -1,0 +1,9 @@
+{
+  "id": "browser-import",
+  "name": "Browser import",
+  "description": "Import cookies and logins from Chrome, Arc, Brave, Edge, and other Chromium browsers into the Paseo browser",
+  "media": [],
+  "requirements": {
+    "paseo": ">=0.16.0-beta.1"
+  }
+}
