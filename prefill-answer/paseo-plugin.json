@@ -1,0 +1,9 @@
+{
+  "id": "prefill-answer",
+  "name": "Prefill answer",
+  "description": "Let agents propose your next reply, prefilled in the composer so you only press Enter",
+  "media": [],
+  "requirements": {
+    "paseo": ">=0.16.0-beta.1"
+  }
+}
