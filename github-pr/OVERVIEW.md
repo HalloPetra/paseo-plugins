@@ -1,6 +1,6 @@
 Shows the GitHub pull request for the current workspace's branch in a panel beside your agents, and lets you merge it or hand failing checks to an agent. Open it from the Explorer sidebar, the pull request button in the workspace header, or "Show pull request" in the Command Center.
 
-The panel shows the PR title, state, branch and diff size; whether it can be merged and the review decision; every check with its status, linked to its run; the description rendered as Markdown; and conversation comments, reviews, and inline review comments in chronological order. Sections and comments can be collapsed, and comments from common bots start collapsed. It refreshes every 30 seconds and on demand. The header button is tinted by the PR's overall status and shows its number.
+The panel shows the PR title, state, branch and diff size; whether it can be merged and the review decision; every check with its status, linked to its run; the description rendered as Markdown; and conversation comments, reviews, and inline review comments in chronological order. Sections and comments can be collapsed, and comments from common bots start collapsed. With the Link opener plugin installed, links in comments and the description show its open-in popover. It refreshes every 30 seconds and on demand. The header button is tinted by the PR's overall status and shows its number.
 
 ## Merging
 

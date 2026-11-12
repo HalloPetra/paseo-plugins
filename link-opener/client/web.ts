@@ -7,7 +7,9 @@ declare const document: any;
 declare const window: any;
 declare const navigator: { userAgent: string };
 
-const CHAT_SELECTOR = '[data-testid="agent-chat-scroll"]';
+// The agent chat, plus any plugin view that opts in by rendering inside a View with
+// `testID="link-opener-scope"` (the GitHub PR panel does this for comments and the description).
+const SCOPE_SELECTOR = '[data-testid="agent-chat-scroll"], [data-testid="link-opener-scope"]';
 const POPOVER_ATTR = "data-link-opener-popover";
 
 export interface LinkTarget {
@@ -258,7 +260,7 @@ export function interceptChatLinks(handlers: LinkHandlers): () => void {
   const onClick = (event: any) => {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     const element = event.target?.closest?.("a[href]");
-    if (!element || element.closest(`[${POPOVER_ATTR}]`) || !element.closest(CHAT_SELECTOR)) return;
+    if (!element || element.closest(`[${POPOVER_ATTR}]`) || !element.closest(SCOPE_SELECTOR)) return;
     const url: string = element.href;
     if (!isHttpUrl(url)) return;
     event.preventDefault();
