@@ -136,6 +136,14 @@ const WORKFLOW_STATES_QUERY = `
   }
 `;
 
+const ALL_WORKFLOW_STATES_QUERY = `
+  query PaseoLinearAllStates {
+    workflowStates(first: 250) {
+      nodes { id name type color position }
+    }
+  }
+`;
+
 const ISSUE_UPDATE_MUTATION = `
   mutation PaseoLinearSetState($id: String!, $stateId: String!) {
     issueUpdate(id: $id, input: { stateId: $stateId }) { success issue { ${ISSUE_FIELDS} } }
@@ -283,6 +291,25 @@ export function createLinearClient(options: { apiKey: string; endpoint?: string;
       const states = response.data.workflowStates.nodes.sort(
         (a, b) => stateTypeRank(a.type) - stateTypeRank(b.type) || a.position - b.position,
       );
+      return { states };
+    },
+
+    /** One state per name across every team (first team wins its icon and color), ordered by type then position. */
+    async stateChoices() {
+      const response = WorkflowStatesResponseSchema.parse(await graphql(ALL_WORKFLOW_STATES_QUERY));
+      throwGraphqlErrors(response.errors);
+      if (!response.data) throw new LinearApiError("Linear returned no workflow states");
+      const sorted = response.data.workflowStates.nodes.sort(
+        (a, b) => stateTypeRank(a.type) - stateTypeRank(b.type) || a.position - b.position,
+      );
+      const states: { name: string; type: string; color: string }[] = [];
+      const seen = new Set<string>();
+      for (const state of sorted) {
+        const key = state.name.trim().toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        states.push({ name: state.name, type: state.type, color: state.color });
+      }
       return { states };
     },
 

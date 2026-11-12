@@ -35,6 +35,16 @@ export const listTeamStatesRpc = defineRpc({
   output: z.object({ states: z.array(WorkflowStateSchema) }),
 });
 
+export const StateChoiceSchema = z.object({ name: z.string(), type: z.string(), color: z.string() });
+export type StateChoice = z.infer<typeof StateChoiceSchema>;
+
+/** Workflow states across all teams, one per name, for the status automation settings. */
+export const listStateChoicesRpc = defineRpc({
+  name: "linear.states.choices",
+  input: z.object({}),
+  output: z.object({ states: z.array(StateChoiceSchema) }),
+});
+
 export const setIssueStateRpc = defineRpc({
   name: "linear.issue.set_state",
   input: z.object({ issueId: z.string(), stateId: z.string() }),

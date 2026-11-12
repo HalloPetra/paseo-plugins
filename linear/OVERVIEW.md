@@ -6,10 +6,12 @@ The picker shows each issue with team and number badges, status and priority ico
 
 A workspace is tied to an issue by, in order: an explicit link (set automatically when you start a chat with the Linear button, or with `/link-linear PROD-123`; `/link-linear none` removes it), the issue Linear links to the workspace's pull request, an identifier in the branch, pull request title or workspace name, Linear's branch matching, a "linear issue 123" style mention in those names, or the issue named in the first message of the workspace's chats or looked up by Linear tools in that first turn.
 
+**Issue status automation.** In Settings → Plugins → Linear you can choose a status for each workspace event. "Workspace started" applies when you start a chat with an issue picked from the Linear button. "Workspace archived" applies when a workspace linked to an issue is archived. For example, you can use "In Progress" on start and "Testing" on archive. Each event can also be left as "Don't change". Statuses are matched by name in the issue's own team; if the team has no status with that name, the issue is left alone. Only explicit links trigger these changes: the Linear button or `/link-linear`. Issues found from branch names or messages are never moved. Issues that are already completed or canceled are never moved either.
+
 ## Setup
 
 Requires Paseo 0.16.0-beta.1 or later on both the app and the daemon. Create a personal API key in Linear under Settings → Security & access → Personal API keys, then paste it in Settings → Plugins → Linear. If no key is saved, the plugin falls back to the `LINEAR_API_KEY` environment variable of the daemon.
 
 ## What it sends and stores
 
-Queries and status changes go from the daemon to `api.linear.app` using your API key. Changing a status in the header writes to Linear as your user. The key is stored in this host's plugin settings as plain JSON, not in a credential vault. Lists show up to 50 issues. Priority sort orders the 100 most recently updated matches.
+Queries and status changes go from the daemon to `api.linear.app` using your API key. Changing a status in the header, and the status automation above, write to Linear as your user. The key is stored in this host's plugin settings as plain JSON, not in a credential vault. Lists show up to 50 issues. Priority sort orders the 100 most recently updated matches.

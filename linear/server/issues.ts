@@ -11,7 +11,7 @@ declare const process: { env: Record<string, string | undefined> };
 
 export type LinearSettings = PluginSettings<typeof linearSettings.schema>;
 
-async function client(settings: LinearSettings) {
+export async function client(settings: LinearSettings) {
   const state = await settings.read();
   const saved = state.status === "ready" ? state.values.apiKey.trim() : "";
   return createLinearClient({ apiKey: saved || (process.env.LINEAR_API_KEY ?? "") });
@@ -48,6 +48,10 @@ export async function resolveWorkspaceIssue(
 
 export async function listTeamStates({ teamId }: RpcInput<typeof listTeamStatesRpc>, settings: LinearSettings) {
   return (await client(settings)).teamStates(teamId);
+}
+
+export async function listStateChoices(settings: LinearSettings) {
+  return (await client(settings)).stateChoices();
 }
 
 export async function setIssueState(
