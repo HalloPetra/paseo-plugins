@@ -1,0 +1,9 @@
+{
+  "id": "orchestrator",
+  "name": "Orchestrator",
+  "description": "Let agents in different workspaces message, question, and direct each other, so one session can orchestrate the rest",
+  "media": [],
+  "requirements": {
+    "paseo": ">=0.16.0-beta.1"
+  }
+}
