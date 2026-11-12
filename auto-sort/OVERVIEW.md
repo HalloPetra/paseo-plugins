@@ -11,7 +11,8 @@ When the plugin is first enabled, workspaces whose pull request is already merge
 Archiving a worktree workspace removes its worktree, so the plugin leaves a workspace alone when:
 
 - an agent in it is running or waiting for input, until that changes
-- it is pinned, a background or internal workspace, or not a Paseo worktree (local checkouts and plain directories are never archived)
+- it is pinned and "Skip pinned workspaces" is on (the default)
+- it is a background or internal workspace, or not a Paseo worktree (local checkouts and plain directories are never archived)
 - "Keep workspaces with unsaved work" is on (the default) and the worktree has uncommitted changes or commits that are on no remote. Kept workspaces are checked again after 15 minutes.
 
 ## Settings
@@ -21,6 +22,7 @@ Under Settings, Plugins, Auto sort, or "Auto sort settings" in the Command Cente
 - Archive when the pull request is merged (on by default)
 - Archive when the pull request is closed without merging (off by default)
 - When: immediately, or after 5 minutes (default), 30 minutes, or 4 hours
+- Skip pinned workspaces (on by default)
 - Keep workspaces with unsaved work (on by default)
 
 The Activity section lists pending archives, recent archives, and kept workspaces with the reason they were kept. History is kept in memory and resets when the plugin restarts.
